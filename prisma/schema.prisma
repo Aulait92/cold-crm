@@ -1,0 +1,142 @@
+// Cold CRM – Datenmodell
+// Kontakt = eine Allianz-Agentur. Die Anruf-Pipeline (stage) ist getrennt
+// vom Cold-Mail-Status (CampaignLead, kommt aus Instantly).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Stage {
+  NEU
+  NICHT_ERREICHT
+  WIEDERVORLAGE
+  INTERESSE
+  TERMIN
+  GEWONNEN
+  SPAETER
+  VERLOREN
+  UNGUELTIG
+}
+
+enum LossReason {
+  KEIN_BEDARF       // ausgelastet, braucht keine Kunden
+  HAT_ANBIETER      // kauft schon Leads / arbeitet mit Agentur
+  UEBER_ALLIANZ     // macht das über die Allianz
+  ZU_TEUER          // Budget / Preis
+  KEIN_INTERESSE
+  SONSTIGES
+}
+
+enum ActivityType {
+  ANRUF
+  EMAIL
+  NOTIZ
+  STATUS
+  COLD_MAIL
+  IMPORT
+}
+
+enum TaskType {
+  ANRUF
+  NACHFASSEN
+  UNTERLAGEN
+  TERMIN
+  SONSTIGES
+}
+
+model Contact {
+  id           String  @id @default(cuid())
+  name         String
+  email        String  @unique
+  phone        String?
+  fax          String?
+  street       String?
+  zip          String?
+  city         String?
+  ratingValue  Float?
+  ratingCount  Int?
+  openingHours String?
+  url          String?
+  description  String?
+
+  stage         Stage       @default(NEU)
+  lossReason    LossReason?
+  competitor    String? // z.B. LEAD.NOW, Terminadler, Alkaio
+  callAttempts  Int         @default(0)
+  lastContactAt DateTime?
+  legacyStatus  String? // Original-Status aus der Cold-Calling-Liste
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  activities Activity[]
+  tasks      Task[]
+  campaigns  CampaignLead[]
+
+  @@index([stage])
+  @@index([zip])
+  @@index([city])
+}
+
+model Activity {
+  id         String       @id @default(cuid())
+  contactId  String
+  contact    Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  type       ActivityType
+  outcome    String?
+  note       String?
+  occurredAt DateTime     @default(now())
+
+  @@index([contactId, occurredAt])
+}
+
+model Task {
+  id        String    @id @default(cuid())
+  contactId String?
+  contact   Contact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  title     String
+  type      TaskType  @default(SONSTIGES)
+  note      String?
+  dueAt     DateTime
+  doneAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([doneAt, dueAt])
+  @@index([contactId])
+}
+
+model Campaign {
+  id          String         @id @default(cuid())
+  instantlyId String?        @unique
+  name        String         @unique
+  createdAt   DateTime       @default(now())
+  leads       CampaignLead[]
+}
+
+// Ein Kontakt in einer Instantly-Kampagne.
+model CampaignLead {
+  id           String    @id @default(cuid())
+  contactId    String
+  contact      Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  campaignId   String
+  campaign     Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  status       String? // Aktiv, Pausiert, Abgeschlossen, Bounced, Abgemeldet, Übersprungen, Noch nicht kontaktiert
+  sentAt       DateTime? // erste/letzte bekannte Mail
+  openCount    Int       @default(0)
+  replyCount   Int       @default(0)
+  clickCount   Int       @default(0)
+  lastOpenAt   DateTime?
+  lastReplyAt  DateTime?
+  bounced      Boolean   @default(false)
+  unsubscribed Boolean   @default(false)
+  interest     String? // Instantly-Interessenstatus
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([contactId, campaignId])
+  @@index([campaignId])
+}
