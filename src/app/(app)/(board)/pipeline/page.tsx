@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { LOSS_LABEL, LOSS_REASONS, STAGES, shortName } from "@/lib/crm";
 import { relDay, dayKey, todayKey } from "@/lib/dates";
 import { dragStage } from "@/app/actions";
+import { LI_COLOR, LI_LABEL } from "@/lib/linkedin";
 import { Kanban, type KanbanCard, type KanbanColumn } from "@/components/kanban";
 
 const PER_COLUMN = 40;
@@ -21,7 +22,7 @@ export default async function PipelinePage() {
             orderBy: { updatedAt: "desc" },
             take: PER_COLUMN,
             select: {
-              id: true, name: true, city: true, stage: true, lossReason: true, competitor: true,
+              id: true, name: true, city: true, stage: true, linkedinStatus: true, lossReason: true, competitor: true,
               tasks: { where: { doneAt: null }, orderBy: { dueAt: "asc" }, take: 1, select: { title: true, dueAt: true } },
               campaigns: { select: { sentAt: true, replyCount: true } },
             },
@@ -66,6 +67,7 @@ export default async function PipelinePage() {
           <div className="mt-0.5 text-xs text-slate-500">{c.city}</div>
           <div className="mt-2 flex flex-wrap gap-1">
             {replied ? <span className="badge bg-emerald-100 text-emerald-800">Mail beantwortet</span> : mailed && <span className="badge bg-sky-50 text-sky-700">Cold Mail</span>}
+            {c.linkedinStatus && <span className={`badge ${LI_COLOR[c.linkedinStatus]}`}>LinkedIn: {LI_LABEL[c.linkedinStatus]}</span>}
             {c.lossReason && <span className="badge bg-rose-50 text-rose-700">{LOSS_LABEL[c.lossReason]}</span>}
             {c.competitor && <span className="badge bg-slate-100 text-slate-600">{c.competitor}</span>}
           </div>

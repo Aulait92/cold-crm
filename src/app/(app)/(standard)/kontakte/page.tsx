@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { STAGES, shortName } from "@/lib/crm";
 import { fmtDate } from "@/lib/dates";
 import { StageBadge } from "@/components/ui";
+import { LI_COLOR, LI_LABEL, LI_STATUSES } from "@/lib/linkedin";
 import { deleteContacts } from "@/app/actions";
 import { ConfirmButton, SelectAll } from "@/components/confirm-button";
 import type { Prisma } from "@/generated/prisma/client";
@@ -25,6 +26,7 @@ export default async function KontaktePage({ searchParams }: { searchParams: Pro
   const stage = STAGES.some((s) => s.id === sp.stage) ? (sp.stage as Stage) : undefined;
   const mail = sp.mail && MAIL_FILTERS[sp.mail] ? sp.mail : undefined;
   const plz = sp.plz?.trim();
+  const li = sp.li === "none" || LI_STATUSES.some((x) => x.id === sp.li) ? sp.li : undefined;
   const page = Math.max(1, Number(sp.page) || 1);
 
   const where: Prisma.ContactWhereInput = {
@@ -48,6 +50,7 @@ export default async function KontaktePage({ searchParams }: { searchParams: Pro
       stage ? { stage } : {},
       mail ? MAIL_FILTERS[mail].where : {},
       plz ? { zip: { startsWith: plz } } : {},
+      li ? { linkedinStatus: li === "none" ? null : li } : {},
     ],
   };
 
@@ -59,7 +62,7 @@ export default async function KontaktePage({ searchParams }: { searchParams: Pro
       skip: (page - 1) * PAGE,
       take: PAGE,
       select: {
-        id: true, name: true, leaderNames: true, city: true, zip: true, phone: true, stage: true, ratingValue: true, ratingCount: true, lastContactAt: true,
+        id: true, name: true, leaderNames: true, city: true, linkedinStatus: true, zip: true, phone: true, stage: true, ratingValue: true, ratingCount: true, lastContactAt: true,
         campaigns: { select: { sentAt: true, openCount: true, replyCount: true, bounced: true } },
         tasks: { where: { doneAt: null }, orderBy: { dueAt: "asc" }, take: 1, select: { dueAt: true, title: true } },
       },
@@ -67,7 +70,7 @@ export default async function KontaktePage({ searchParams }: { searchParams: Pro
   ]);
   const pages = Math.max(1, Math.ceil(total / PAGE));
   const link = (p: Record<string, string | undefined>) => {
-    const params = new URLSearchParams(Object.entries({ q, stage, mail, plz, ...p }).filter(([, v]) => v) as [string, string][]);
+    const params = new URLSearchParams(Object.entries({ q, stage, mail, plz, li, ...p }).filter(([, v]) => v) as [string, string][]);
     return `/kontakte?${params}`;
   };
 
@@ -75,7 +78,7 @@ export default async function KontaktePage({ searchParams }: { searchParams: Pro
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">Kontakte <span className="text-base font-normal text-slate-500">({total.toLocaleString("de-DE")})</span></h1>
 
-      <form className="card grid gap-3 p-4 md:grid-cols-[2fr_1fr_1fr_120px_auto] md:items-end">
+      <form className="card grid gap-3 p-4 md:grid-cols-[2fr_1fr_1fr_1fr_110px_auto] md:items-end">
         <div>
           <label className="label">Suche (Agentur, Ansprechpartner, E-Mail, Ort, Telefon)</label>
           <input name="q" defaultValue={q} className="input" placeholder="z.B. Krefeld" />
@@ -92,6 +95,14 @@ export default async function KontaktePage({ searchParams }: { searchParams: Pro
           <select name="mail" defaultValue={mail ?? ""} className="input">
             <option value="">Alle</option>
             {Object.entries(MAIL_FILTERS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">LinkedIn</label>
+          <select name="li" defaultValue={li ?? ""} className="input">
+            <option value="">Alle</option>
+            <option value="none">Noch nicht auf LinkedIn</option>
+            {LI_STATUSES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
           </select>
         </div>
         <div>
@@ -125,6 +136,7 @@ export default async function KontaktePage({ searchParams }: { searchParams: Pro
               <th className="px-4 py-2 font-medium">Telefon</th>
               <th className="px-4 py-2 font-medium">Stufe</th>
               <th className="px-4 py-2 font-medium">Cold Mail</th>
+              <th className="px-4 py-2 font-medium">LinkedIn</th>
               <th className="px-4 py-2 font-medium">Nächste Aufgabe</th>
               <th className="px-4 py-2 font-medium">Letzter Kontakt</th>
             </tr>
@@ -153,6 +165,9 @@ export default async function KontaktePage({ searchParams }: { searchParams: Pro
                       : replied ? <span className="badge bg-emerald-100 text-emerald-800">Geantwortet</span>
                       : sent ? <span className={clsx("badge", opened ? "bg-sky-100 text-sky-800" : "bg-sky-50 text-sky-700")}>Gesendet{opened ? " · geöffnet" : ""}</span>
                       : <span className="text-xs text-slate-400">–</span>}
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap">
+                    {c.linkedinStatus ? <span className={`badge ${LI_COLOR[c.linkedinStatus]}`}>{LI_LABEL[c.linkedinStatus]}</span> : <span className="text-xs text-slate-400">–</span>}
                   </td>
                   <td className="px-4 py-2 text-xs text-slate-600">{c.tasks[0] ? `${fmtDate(c.tasks[0].dueAt)} · ${c.tasks[0].title}` : ""}</td>
                   <td className="px-4 py-2 text-xs text-slate-500 whitespace-nowrap">{fmtDate(c.lastContactAt)}</td>

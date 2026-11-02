@@ -1,14 +1,19 @@
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { ContactsImport, InstantlyCsvImport, InstantlySync } from "@/components/import-forms";
+import { ContactsImport, InstantlyCsvImport, InstantlySync, WaalaxyCsvImport } from "@/components/import-forms";
+import { fmtDateTime } from "@/lib/dates";
+import { LI_LABEL } from "@/lib/linkedin";
+import Link from "next/link";
 
 export default async function ImportPage() {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host");
   const proto = h.get("x-forwarded-proto") ?? "https";
-  const [contacts, campaigns] = await Promise.all([
+  const [contacts, campaigns, liEvents, liCount] = await Promise.all([
     prisma.contact.count(),
     prisma.campaign.findMany({ include: { _count: { select: { leads: true } } }, orderBy: { createdAt: "desc" } }),
+    prisma.linkedInEvent.findMany({ orderBy: { createdAt: "desc" }, take: 15, include: { contact: { select: { id: true, name: true } } } }),
+    prisma.contact.count({ where: { linkedinStatus: { not: null } } }),
   ]);
 
   return (
@@ -53,6 +58,50 @@ export default async function ImportPage() {
         <code className="block overflow-x-auto rounded-lg bg-slate-100 p-2 text-xs">
           {proto}://{host}/api/instantly/webhook?token={process.env.WEBHOOK_TOKEN ? "<WEBHOOK_TOKEN>" : "(WEBHOOK_TOKEN setzen)"}
         </code>
+      </section>
+
+      <section className="card space-y-3 p-5 text-sm">
+        <h2 className="font-medium">4. LinkedIn (Waalaxy)</h2>
+        <p className="text-slate-600">
+          Waalaxy hat keine API, liefert aber Daten per Webhook und CSV. Zuordnung zu den Kontakten über LinkedIn-Profil-URL,
+          E-Mail oder Vor- und Nachname (bei gleichen Namen zusätzlich über den Ort). Der LinkedIn-Status geht nur vorwärts:
+          Anfrage gesendet → Vernetzt → Nachricht gesendet → Geantwortet. Antworten erzeugen eine Aufgabe.
+          Aktuell {liCount.toLocaleString("de-DE")} Kontakte mit LinkedIn-Status.
+        </p>
+        <div>
+          <h3 className="mb-1 font-medium text-slate-700">a) Webhook (automatisch)</h3>
+          <p className="text-slate-600">
+            In Waalaxy in der Kampagne einen Schritt <b>„CRM Sync“</b> hinzufügen (bzw. die Synchronisation bei Antwort aktivieren)
+            und als Ziel „Webhook / Zapier“ mit dieser URL eintragen:
+          </p>
+          <code className="mt-1 block overflow-x-auto rounded-lg bg-slate-100 p-2 text-xs">
+            {proto}://{host}/api/waalaxy/webhook?token={process.env.WEBHOOK_TOKEN ? "<WEBHOOK_TOKEN>" : "(WEBHOOK_TOKEN setzen)"}
+          </code>
+        </div>
+        <div>
+          <h3 className="mb-1 font-medium text-slate-700">b) CSV-Export (manuell, alle Waalaxy-Pläne)</h3>
+          <p className="mb-2 text-slate-600">In Waalaxy die Prospect-Liste oder Kampagne als CSV exportieren und hier hochladen.</p>
+          <WaalaxyCsvImport />
+        </div>
+        {liEvents.length > 0 && (
+          <div>
+            <h3 className="mb-1 font-medium text-slate-700">Letzte Webhook-Ereignisse</h3>
+            <ul className="divide-y divide-slate-100">
+              {liEvents.map((e) => (
+                <li key={e.id} className="flex flex-wrap items-center gap-2 py-1.5">
+                  <span className="text-xs text-slate-400">{fmtDateTime(e.createdAt)}</span>
+                  <span>{e.name ?? "?"}{e.company ? ` · ${e.company}` : ""}</span>
+                  {e.status && <span className="badge bg-slate-100 text-slate-600">{LI_LABEL[e.status] ?? e.status}</span>}
+                  {e.contact ? (
+                    <Link href={`/kontakte/${e.contact.id}`} className="ml-auto text-xs text-sky-700 hover:underline">→ zugeordnet</Link>
+                  ) : (
+                    <span className="ml-auto text-xs text-amber-700">nicht zugeordnet</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
 
       {campaigns.length > 0 && (

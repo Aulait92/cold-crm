@@ -8,6 +8,7 @@ import { CUSTOMER_LABEL, CUSTOMER_STAGES, OUTCOME_BY_ID, STAGE_RANK, STAGE_LABEL
 import { addDays, fromDayKey } from "@/lib/dates";
 import type { ActivityType, CustomerStage, LossReason, Stage, TaskType } from "@/generated/prisma/enums";
 import { importContactsCsv } from "@/lib/import-contacts";
+import { LI_LABEL, importWaalaxyCsv } from "@/lib/linkedin";
 import { ensureReplyTask, importInstantlyCsv, recordReply, syncInstantly } from "@/lib/instantly";
 
 const s = (fd: FormData, k: string) => {
@@ -337,4 +338,49 @@ export async function setReplySentiment(fd: FormData) {
   const e = await prisma.emailMessage.update({ where: { id }, data: { sentiment } });
   if (sentiment === "POSITIV") await ensureReplyTask(e.contactId, (e.text ?? e.subject ?? "").slice(0, 300));
   refresh(e.contactId);
+}
+
+// ─── LinkedIn (Waalaxy) ─────────────────────────────────────────────────
+export async function importWaalaxyAction(_p: ImportState, fd: FormData): Promise<ImportState> {
+  await requireAuth();
+  const file = fd.get("file");
+  if (!(file instanceof File) || !file.size) return { ok: false, message: "Bitte eine CSV-Datei wählen." };
+  try {
+    const r = await importWaalaxyCsv(await file.text());
+    refresh();
+    const via = Object.entries(r.byVia).map(([k, v]) => `${v}× ${k}`).join(", ");
+    return {
+      ok: true,
+      message:
+        `${r.rows} Prospects: ${r.matched} Kontakten zugeordnet${via ? ` (${via})` : ""}, ${r.updated} aktualisiert, ${r.unmatched} nicht gefunden.` +
+        (r.unmatchedNames.length ? ` Nicht gefunden z.B.: ${r.unmatchedNames.join("; ")}` : ""),
+    };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** LinkedIn-Status/Profil auf der Kontaktseite manuell setzen */
+export async function updateLinkedIn(fd: FormData) {
+  await requireAuth();
+  const contactId = s(fd, "contactId")!;
+  const status = s(fd, "linkedinStatus");
+  const url = s(fd, "linkedinUrl");
+  const before = await prisma.contact.findUniqueOrThrow({ where: { id: contactId }, select: { linkedinStatus: true } });
+  const now = new Date();
+  await prisma.contact.update({
+    where: { id: contactId },
+    data: {
+      linkedinUrl: url,
+      linkedinStatus: status,
+      linkedinRequestAt: status === "ANFRAGE_GESENDET" && before.linkedinStatus !== status ? now : undefined,
+      linkedinConnectedAt: status === "VERNETZT" && before.linkedinStatus !== status ? now : undefined,
+      linkedinMessageAt: status === "NACHRICHT_GESENDET" && before.linkedinStatus !== status ? now : undefined,
+      linkedinReplyAt: status === "GEANTWORTET" && before.linkedinStatus !== status ? now : undefined,
+    },
+  });
+  if (status && before.linkedinStatus !== status) {
+    await prisma.activity.create({ data: { contactId, type: "LINKEDIN", outcome: `LinkedIn: ${LI_LABEL[status] ?? status}` } });
+  }
+  refresh(contactId);
 }

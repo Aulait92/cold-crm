@@ -8,13 +8,15 @@ import { dayBounds, openTasks } from "@/lib/queries";
 export default async function HeutePage() {
   await connection();
   const { start, tomorrow } = dayBounds();
-  const [tasks, stageCounts, sent, replies, mailNoCall, total] = await Promise.all([
+  const [tasks, stageCounts, sent, replies, mailNoCall, total, liConnected, liReplies] = await Promise.all([
     openTasks({ dueAt: { lt: tomorrow } }),
     prisma.contact.groupBy({ by: ["stage"], _count: true }),
     prisma.contact.count({ where: { campaigns: { some: { sentAt: { not: null } } } } }),
     prisma.contact.count({ where: { campaigns: { some: { replyCount: { gt: 0 } } } } }),
     prisma.contact.count({ where: { stage: "NEU", campaigns: { some: { sentAt: { not: null } } } } }),
     prisma.contact.count(),
+    prisma.contact.count({ where: { linkedinStatus: { in: ["VERNETZT", "NACHRICHT_GESENDET", "GEANTWORTET"] } } }),
+    prisma.contact.count({ where: { linkedinStatus: "GEANTWORTET" } }),
   ]);
   const overdue = tasks.filter((t) => t.dueAt < start).length;
   const count = (id: string) => stageCounts.find((s) => s.stage === id)?._count ?? 0;
@@ -22,13 +24,15 @@ export default async function HeutePage() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold">Heute</h1>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Aufgaben fällig heute" value={tasks.length - overdue} href="/aufgaben" tone="amber" />
         <Stat label="Überfällig" value={overdue} href="/aufgaben" tone={overdue ? "red" : undefined} />
         <Stat label="Kontakte gesamt" value={total} href="/kontakte" />
         <Stat label="Cold Mail erhalten" value={sent} href="/kontakte?mail=sent" />
         <Stat label="Antworten auf Cold Mail" value={replies} href="/kontakte?mail=replied" tone="green" />
         <Stat label="Mail erhalten, noch nie angerufen" value={mailNoCall} href="/kontakte?mail=sent&stage=NEU" />
+        <Stat label="LinkedIn vernetzt" value={liConnected} href="/kontakte?li=VERNETZT" />
+        <Stat label="LinkedIn-Antworten" value={liReplies} href="/kontakte?li=GEANTWORTET" tone="green" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">

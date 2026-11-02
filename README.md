@@ -12,6 +12,8 @@ Einfaches CRM für die Cold-Akquise der Allianz-Agenturen: Anruf-Pipeline, Aufga
 - **Import**: Agenturliste als CSV (Numbers: Ablage → Exportieren → CSV). Die alten Freitext-Status werden automatisch in Stufe, Verlustgrund, Wettbewerber und Folgeaufgabe übersetzt (`src/lib/legacy.ts`).
 - **Instantly**: Abgleich per API v2 (alle Kampagnen + Leads, Zuordnung per E-Mail), CSV-Upload als Fallback, Webhook für Live-Updates (`/api/instantly/webhook?token=…`). Antworten (Betreff + Text) werden am Kontakt gespeichert und erzeugen automatisch eine Aufgabe. Antworten aus anderen Postfächern lassen sich auf der Kontaktseite manuell einfügen.
 
+- **LinkedIn (Waalaxy)**: Webhook (`/api/waalaxy/webhook?token=…`, Schritt „CRM Sync“) und CSV-Export. Zuordnung über LinkedIn-URL, E-Mail oder Name (+ Ort). Status: Anfrage gesendet → Vernetzt → Nachricht gesendet → Geantwortet; Antworten erzeugen eine Aufgabe.
+
 ## Lokal starten
 
 ```bash

@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { importContactsAction, importInstantlyAction, syncInstantlyAction, type ImportState } from "@/app/actions";
+import { importContactsAction, importInstantlyAction, importWaalaxyAction, syncInstantlyAction, type ImportState } from "@/app/actions";
 
 function Result({ state }: { state: ImportState }) {
   if (!state) return null;
@@ -37,6 +37,17 @@ export function InstantlyCsvImport() {
       <input name="campaign" placeholder="Kampagnenname (falls nicht in der CSV)" className="input" />
       <input type="file" name="file" accept=".csv,text/csv" className="input" required />
       <button className="btn-ghost" disabled={pending}>{pending ? "Importiere …" : "Instantly-CSV importieren"}</button>
+      <Result state={state} />
+    </form>
+  );
+}
+
+export function WaalaxyCsvImport() {
+  const [state, action, pending] = useActionState(importWaalaxyAction, null);
+  return (
+    <form action={action} className="space-y-3">
+      <input type="file" name="file" accept=".csv,text/csv" className="input" required />
+      <button className="btn-primary" disabled={pending}>{pending ? "Importiere …" : "Waalaxy-CSV importieren"}</button>
       <Result state={state} />
     </form>
   );

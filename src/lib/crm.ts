@@ -40,6 +40,7 @@ export const ACTIVITY_LABEL: Record<ActivityType, string> = {
   NOTIZ: "Notiz",
   STATUS: "Status",
   COLD_MAIL: "Cold Mail",
+  LINKEDIN: "LinkedIn",
   IMPORT: "Aus Liste",
 };
 

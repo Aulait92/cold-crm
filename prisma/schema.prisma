@@ -48,6 +48,7 @@ enum ActivityType {
   NOTIZ
   STATUS
   COLD_MAIL
+  LINKEDIN
   IMPORT
 }
 
@@ -87,6 +88,15 @@ model Contact {
   xingUrl        String?
   linkedinUrl    String?
 
+  // LinkedIn-Outreach (Waalaxy)
+  linkedinStatus      String? // ANFRAGE_GESENDET, VERNETZT, NACHRICHT_GESENDET, GEANTWORTET
+  linkedinRequestAt   DateTime?
+  linkedinConnectedAt DateTime?
+  linkedinMessageAt   DateTime?
+  linkedinReplyAt     DateTime?
+  linkedinList        String? // Waalaxy-Liste / Kampagne
+  linkedinTags        String?
+
   stage         Stage       @default(NEU)
   lossReason    LossReason?
   competitor    String? // z.B. LEAD.NOW, Terminadler, Alkaio
@@ -108,9 +118,11 @@ model Contact {
   tasks      Task[]
   campaigns  CampaignLead[]
   emails     EmailMessage[]
+  linkedinEvents LinkedInEvent[]
 
   @@index([stage])
   @@index([customerStage])
+  @@index([linkedinStatus])
   @@index([zip])
   @@index([city])
 }
@@ -192,4 +204,21 @@ model EmailMessage {
   createdAt   DateTime @default(now())
 
   @@index([contactId, sentAt])
+}
+
+// Rohdaten aus Waalaxy (Webhook), auch nicht zugeordnete – zum Nachvollziehen
+model LinkedInEvent {
+  id        String   @id @default(cuid())
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  source    String // webhook | csv
+  name      String?
+  company   String?
+  url       String?
+  status    String?
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([contactId])
+  @@index([createdAt])
 }

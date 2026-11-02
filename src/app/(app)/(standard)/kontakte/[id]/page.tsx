@@ -7,7 +7,8 @@ import { stripQuoted } from "@/lib/instantly";
 import { StageBadge, TaskRow } from "@/components/ui";
 import { ActivityForm } from "@/components/activity-form";
 import { TaskForm } from "@/components/task-form";
-import { addReplyManually, deleteContact, setReplySentiment, setStage, updateCustomer } from "@/app/actions";
+import { addReplyManually, deleteContact, setReplySentiment, setStage, updateCustomer, updateLinkedIn } from "@/app/actions";
+import { LI_COLOR, LI_LABEL, LI_STATUSES } from "@/lib/linkedin";
 import { ConfirmButton } from "@/components/confirm-button";
 import { taskInclude } from "@/lib/queries";
 
@@ -192,6 +193,34 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
           </section>
 
           <section className="card p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-medium">LinkedIn</h2>
+              {c.linkedinStatus && <span className={`badge ${LI_COLOR[c.linkedinStatus]}`}>{LI_LABEL[c.linkedinStatus]}</span>}
+            </div>
+            <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600">
+              {c.linkedinRequestAt && <span>Anfrage {fmtDate(c.linkedinRequestAt)}</span>}
+              {c.linkedinConnectedAt && <span>Vernetzt {fmtDate(c.linkedinConnectedAt)}</span>}
+              {c.linkedinMessageAt && <span>Nachricht {fmtDate(c.linkedinMessageAt)}</span>}
+              {c.linkedinReplyAt && <span className="font-medium text-emerald-700">Antwort {fmtDate(c.linkedinReplyAt)}</span>}
+              {c.linkedinList && <span>Liste: {c.linkedinList}</span>}
+              {c.linkedinTags && <span>Tags: {c.linkedinTags}</span>}
+              {!c.linkedinStatus && <span className="text-slate-400">Noch keine LinkedIn-Aktivität.</span>}
+            </div>
+            <form key={`${c.linkedinStatus}-${c.linkedinUrl}`} action={updateLinkedIn} className="grid gap-2 sm:grid-cols-2">
+              <input type="hidden" name="contactId" value={c.id} />
+              <input name="linkedinUrl" defaultValue={c.linkedinUrl ?? ""} placeholder="https://www.linkedin.com/in/…" className="input sm:col-span-2" />
+              <select name="linkedinStatus" defaultValue={c.linkedinStatus ?? ""} className="input">
+                <option value="">Kein Status</option>
+                {LI_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
+              <div className="flex gap-2">
+                <button className="btn-ghost flex-1">Speichern</button>
+                {c.linkedinUrl && <a href={c.linkedinUrl} target="_blank" rel="noreferrer" className="btn-ghost">Profil ↗</a>}
+              </div>
+            </form>
+          </section>
+
+          <section className="card p-4">
             <h2 className="mb-3 font-medium">Kunde</h2>
             <form key={`${c.customerStage}-${c.monthlyValue}-${c.products}`} action={updateCustomer} className="grid gap-2 sm:grid-cols-2">
               <input type="hidden" name="contactId" value={c.id} />
@@ -243,11 +272,11 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
               {c.agencyType && (<><dt className="text-slate-500">Agenturtyp</dt><dd>{c.agencyType === "GENERAL" ? "Generalvertretung" : c.agencyType === "HAUPT" ? "Hauptvertretung" : c.agencyType}</dd></>)}
               {c.teamSize != null && (<><dt className="text-slate-500">Teamgröße</dt><dd>{c.teamSize}</dd></>)}
               {c.potentialScore != null && (<><dt className="text-slate-500">Potenzial-Score</dt><dd>{c.potentialScore}</dd></>)}
-              {(c.facebookUrl || c.instagramUrl || c.xingUrl || c.linkedinUrl) && (
+              {(c.facebookUrl || c.instagramUrl || c.xingUrl) && (
                 <>
                   <dt className="text-slate-500">Social</dt>
                   <dd className="flex flex-wrap gap-2">
-                    {[["Facebook", c.facebookUrl], ["Instagram", c.instagramUrl], ["Xing", c.xingUrl], ["LinkedIn", c.linkedinUrl]]
+                    {[["Facebook", c.facebookUrl], ["Instagram", c.instagramUrl], ["Xing", c.xingUrl]]
                       .filter(([, u]) => u)
                       .map(([l, u]) => <a key={l} href={u!} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline">{l}</a>)}
                   </dd>
