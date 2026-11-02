@@ -69,27 +69,49 @@ export async function importContactsCsv(text: string): Promise<ImportStats> {
       continue;
     }
     seen.add(email);
-    const base = {
-      name: get("name") ?? email,
-      phone: get("phone") ?? null,
-      fax: get("fax") ?? null,
-      street: get("street") ?? null,
-      zip: get("zip")?.replace(/\.0$/, "").padStart(5, "0") ?? null,
-      city: get("city") ?? null,
-      ratingValue: num(get("ratingValue")),
-      ratingCount: num(get("ratingCount")) as number | null,
-      openingHours: get("openingHours") ?? null,
-      url: get("url") ?? null,
-      description: get("description") ?? null,
+    // Nur Spalten übernehmen, die in der Datei vorkommen – sonst würden
+    // vorhandene Werte beim Import einer anderen Liste geleert.
+    const base: Record<string, string | number | null> = {};
+    const set = (col: string, value: string | number | null) => {
+      if (idx(col) >= 0) base[col] = value;
     };
+    const int = (v: string | undefined) => {
+      const n = num(v);
+      return n == null ? null : Math.round(n);
+    };
+    base.name = get("name") ?? email;
+    set("phone", get("phone") ?? null);
+    set("fax", get("fax") ?? null);
+    set("street", get("street") ?? null);
+    set("zip", get("zip")?.replace(/\.0$/, "").padStart(5, "0") ?? null);
+    set("city", get("city") ?? null);
+    set("ratingValue", num(get("ratingValue")));
+    set("ratingCount", int(get("ratingCount")));
+    set("openingHours", get("openingHours") ?? null);
+    set("url", get("url") ?? null);
+    set("description", get("description") ?? null);
+    set("salutation", get("salutation") ?? null);
+    set("firstName", get("firstName") ?? null);
+    set("lastName", get("lastName") ?? null);
+    if (idx("leaderNames") >= 0) {
+      const names = [...new Set((get("leaderNames") ?? "").split(";").map((x) => x.trim()).filter(Boolean))];
+      base.leaderNames = names.length ? names.join(", ") : null;
+    }
+    set("agencyType", get("agencyType") ?? null);
+    set("teamSize", int(get("teamSize")));
+    set("potentialScore", int(get("potentialScore")));
+    set("facebookUrl", get("facebookUrl") ?? null);
+    set("instagramUrl", get("instagramUrl") ?? null);
+    set("xingUrl", get("xingUrl") ?? null);
+    set("linkedinUrl", get("linkedinUrl") ?? null);
     const statusText = statusIdx >= 0 ? r[statusIdx]?.trim() : "";
     const legacy = statusText ? { text: statusText, date: parseGermanDate(dateIdx >= 0 ? r[dateIdx] : undefined) } : undefined;
     const ex = existing.get(email);
     if (ex) {
       // Legacy-Status nur übernehmen, wenn er neu ist
-      toUpdate.push({ id: ex.id, data: base, legacy: legacy && ex.legacyStatus !== legacy.text ? legacy : undefined });
+      toUpdate.push({ id: ex.id, data: base as Prisma.ContactUpdateInput, legacy: legacy && ex.legacyStatus !== legacy.text ? legacy : undefined });
     } else {
-      toCreate.push({ data: { ...base, email }, legacy });
+      toCreate.push({ data: { ...(base as unknown as Omit<Prisma.ContactCreateInput, "email">), email }, legacy });
     }
   }
 

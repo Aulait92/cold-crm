@@ -18,6 +18,11 @@ export default async function ImportPage() {
       <section className="card space-y-3 p-5">
         <h2 className="font-medium">1. Agenturliste importieren</h2>
         <p className="text-sm text-slate-600">
+          Funktioniert mit der Cold-Calling-Liste (Numbers) und mit der Mailing-Liste aus Instantly
+          (inkl. Ansprechpartner, Teamgröße, Potenzial-Score). Neue Agenturen werden angelegt, bestehende ergänzt –
+          Pipeline, Aufgaben und Verlauf bleiben erhalten.
+        </p>
+        <p className="text-sm text-slate-600">
           In Numbers: <b>Ablage → Exportieren → CSV</b>. Spalten werden über die Kopfzeile erkannt (name, email, phone, …).
           Die Spalte ohne Überschrift nach „description“ wird als Anruf-Status gelesen und automatisch in Pipeline-Stufe,
           Verlustgrund und Folgeaufgabe übersetzt. Erneuter Import ist sicher: Kontakte werden über die E-Mail erkannt.

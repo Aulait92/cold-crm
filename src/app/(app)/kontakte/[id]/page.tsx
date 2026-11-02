@@ -32,6 +32,12 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
         <div>
           <Link href="/kontakte" className="text-sm text-slate-500 hover:underline">← Kontakte</Link>
           <h1 className="mt-1 text-2xl font-semibold">{shortName(c.name)}</h1>
+          {(c.firstName || c.leaderNames) && (
+            <p className="text-sm text-slate-600">
+              Ansprechpartner: {[c.salutation, c.firstName, c.lastName].filter(Boolean).join(" ")}
+              {c.leaderNames && c.leaderNames !== [c.firstName, c.lastName].filter(Boolean).join(" ") && <span className="text-slate-400"> · Inhaber: {c.leaderNames}</span>}
+            </p>
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
             <StageBadge stage={c.stage} />
             {c.customerStage && <span className={`badge ${CUSTOMER_COLOR[c.customerStage]}`}>Kunde: {CUSTOMER_LABEL[c.customerStage]}</span>}
@@ -234,6 +240,19 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
             <dl className="grid grid-cols-[110px_1fr] gap-y-1.5">
               <dt className="text-slate-500">Name</dt><dd>{c.name}</dd>
               {c.fax && (<><dt className="text-slate-500">Fax</dt><dd>{c.fax}</dd></>)}
+              {c.agencyType && (<><dt className="text-slate-500">Agenturtyp</dt><dd>{c.agencyType === "GENERAL" ? "Generalvertretung" : c.agencyType === "HAUPT" ? "Hauptvertretung" : c.agencyType}</dd></>)}
+              {c.teamSize != null && (<><dt className="text-slate-500">Teamgröße</dt><dd>{c.teamSize}</dd></>)}
+              {c.potentialScore != null && (<><dt className="text-slate-500">Potenzial-Score</dt><dd>{c.potentialScore}</dd></>)}
+              {(c.facebookUrl || c.instagramUrl || c.xingUrl || c.linkedinUrl) && (
+                <>
+                  <dt className="text-slate-500">Social</dt>
+                  <dd className="flex flex-wrap gap-2">
+                    {[["Facebook", c.facebookUrl], ["Instagram", c.instagramUrl], ["Xing", c.xingUrl], ["LinkedIn", c.linkedinUrl]]
+                      .filter(([, u]) => u)
+                      .map(([l, u]) => <a key={l} href={u!} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline">{l}</a>)}
+                  </dd>
+                </>
+              )}
               {c.ratingValue != null && (<><dt className="text-slate-500">Bewertung</dt><dd>★ {c.ratingValue} ({c.ratingCount})</dd></>)}
               {c.openingHours && (<><dt className="text-slate-500">Öffnungszeiten</dt><dd className="text-xs">{c.openingHours.replaceAll("Mo ", "Mo ").replaceAll("Tu ", "Di ").replaceAll("We ", "Mi ").replaceAll("Th ", "Do ").replaceAll("Fr ", "Fr ")}</dd></>)}
               {c.legacyStatus && (<><dt className="text-slate-500">Alter Status</dt><dd className="text-xs">{c.legacyStatus}</dd></>)}

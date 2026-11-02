@@ -29,7 +29,22 @@ export default async function KontaktePage({ searchParams }: { searchParams: Pro
 
   const where: Prisma.ContactWhereInput = {
     AND: [
-      q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { email: { contains: q, mode: "insensitive" } }, { city: { contains: q, mode: "insensitive" } }, { phone: { contains: q } }] } : {},
+      q
+        ? {
+            OR: [
+              { name: { contains: q, mode: "insensitive" } },
+              { email: { contains: q, mode: "insensitive" } },
+              { city: { contains: q, mode: "insensitive" } },
+              { phone: { contains: q } },
+              { leaderNames: { contains: q, mode: "insensitive" } },
+              { lastName: { contains: q, mode: "insensitive" } },
+              // "Joerg Riccius" → Vor- und Nachname getrennt suchen
+              ...(q.includes(" ")
+                ? [{ AND: q.split(/\s+/).map((w) => ({ OR: [{ name: { contains: w, mode: "insensitive" as const } }, { leaderNames: { contains: w, mode: "insensitive" as const } }] })) }]
+                : []),
+            ],
+          }
+        : {},
       stage ? { stage } : {},
       mail ? MAIL_FILTERS[mail].where : {},
       plz ? { zip: { startsWith: plz } } : {},
@@ -44,7 +59,7 @@ export default async function KontaktePage({ searchParams }: { searchParams: Pro
       skip: (page - 1) * PAGE,
       take: PAGE,
       select: {
-        id: true, name: true, city: true, zip: true, phone: true, stage: true, ratingValue: true, ratingCount: true, lastContactAt: true,
+        id: true, name: true, leaderNames: true, city: true, zip: true, phone: true, stage: true, ratingValue: true, ratingCount: true, lastContactAt: true,
         campaigns: { select: { sentAt: true, openCount: true, replyCount: true, bounced: true } },
         tasks: { where: { doneAt: null }, orderBy: { dueAt: "asc" }, take: 1, select: { dueAt: true, title: true } },
       },
@@ -62,7 +77,7 @@ export default async function KontaktePage({ searchParams }: { searchParams: Pro
 
       <form className="card grid gap-3 p-4 md:grid-cols-[2fr_1fr_1fr_120px_auto] md:items-end">
         <div>
-          <label className="label">Suche (Name, E-Mail, Ort, Telefon)</label>
+          <label className="label">Suche (Agentur, Ansprechpartner, E-Mail, Ort, Telefon)</label>
           <input name="q" defaultValue={q} className="input" placeholder="z.B. Krefeld" />
         </div>
         <div>
@@ -125,6 +140,9 @@ export default async function KontaktePage({ searchParams }: { searchParams: Pro
                   <td className="py-2 pl-4"><input type="checkbox" name="ids" value={c.id} form="bulk" aria-label="Auswählen" /></td>
                   <td className="px-4 py-2">
                     <Link href={`/kontakte/${c.id}`} className="font-medium hover:underline">{shortName(c.name)}</Link>
+                    {c.leaderNames && !shortName(c.name).includes(c.leaderNames.split(",")[0]) && (
+                      <span className="ml-2 text-xs text-slate-500">{c.leaderNames}</span>
+                    )}
                     {c.ratingValue != null && <span className="ml-2 text-xs text-slate-400">★ {c.ratingValue} ({c.ratingCount})</span>}
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap text-slate-600">{c.zip} {c.city}</td>

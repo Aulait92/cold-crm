@@ -74,6 +74,19 @@ model Contact {
   url          String?
   description  String?
 
+  // Ansprechpartner & Zusatzinfos (aus der Instantly-Mailingliste)
+  salutation     String?
+  firstName      String?
+  lastName       String?
+  leaderNames    String? // alle Inhaber/Geschäftsführer, kommagetrennt
+  agencyType     String? // GENERAL / HAUPT
+  teamSize       Int?
+  potentialScore Int?
+  facebookUrl    String?
+  instagramUrl   String?
+  xingUrl        String?
+  linkedinUrl    String?
+
   stage         Stage       @default(NEU)
   lossReason    LossReason?
   competitor    String? // z.B. LEAD.NOW, Terminadler, Alkaio
