@@ -4,11 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { createSession, destroySession, requireAuth } from "@/lib/auth";
-import { OUTCOME_BY_ID, STAGE_RANK, STAGE_LABEL } from "@/lib/crm";
+import { CUSTOMER_LABEL, CUSTOMER_STAGES, OUTCOME_BY_ID, STAGE_RANK, STAGE_LABEL } from "@/lib/crm";
 import { addDays, fromDayKey } from "@/lib/dates";
-import type { ActivityType, LossReason, Stage, TaskType } from "@/generated/prisma/enums";
+import type { ActivityType, CustomerStage, LossReason, Stage, TaskType } from "@/generated/prisma/enums";
 import { importContactsCsv } from "@/lib/import-contacts";
-import { importInstantlyCsv, syncInstantly } from "@/lib/instantly";
+import { importInstantlyCsv, recordReply, syncInstantly } from "@/lib/instantly";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -59,6 +59,7 @@ export async function logActivity(fd: FormData) {
       where: { id: contactId },
       data: {
         stage,
+        customerStage: stage === "GEWONNEN" && !contact.customerStage ? "VERTRAG" : undefined,
         lossReason: stage === "VERLOREN" ? lossReason ?? "SONSTIGES" : stage ? null : undefined,
         callAttempts: type === "ANRUF" ? { increment: 1 } : undefined,
         lastContactAt: type === "NOTIZ" ? undefined : new Date(),
@@ -88,10 +89,15 @@ export async function setStage(fd: FormData) {
   const stage = s(fd, "stage") as Stage;
   const lossReason = s(fd, "lossReason") as LossReason | null;
   const competitor = s(fd, "competitor");
-  const before = await prisma.contact.findUniqueOrThrow({ where: { id: contactId }, select: { stage: true } });
+  const before = await prisma.contact.findUniqueOrThrow({ where: { id: contactId }, select: { stage: true, customerStage: true } });
   await prisma.contact.update({
     where: { id: contactId },
-    data: { stage, lossReason: stage === "VERLOREN" ? lossReason ?? "SONSTIGES" : null, competitor },
+    data: {
+      stage,
+      lossReason: stage === "VERLOREN" ? lossReason ?? "SONSTIGES" : null,
+      competitor,
+      customerStage: stage === "GEWONNEN" && !before.customerStage ? "VERTRAG" : undefined,
+    },
   });
   if (before.stage !== stage) {
     await prisma.activity.create({
@@ -195,7 +201,7 @@ export async function syncInstantlyAction(prev: ImportState): Promise<ImportStat
     refresh();
     return {
       ok: true,
-      message: `${r.campaigns} Kampagnen, ${r.leads} Leads: ${r.matched} zugeordnet, ${r.sent} mit gesendeter Mail, ${r.replies} mit Antwort, ${r.unmatched} nicht in der Kontaktliste.`,
+      message: `${r.campaigns} Kampagnen, ${r.leads} Leads: ${r.matched} zugeordnet, ${r.sent} mit gesendeter Mail, ${r.replies} mit Antwort (${r.newReplies} neue Antwort-Mails gespeichert), ${r.unmatched} nicht in der Kontaktliste.`,
     };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
@@ -217,4 +223,73 @@ export async function deleteContacts(fd: FormData) {
   const ids = fd.getAll("ids").filter((v): v is string => typeof v === "string" && !!v);
   if (ids.length) await prisma.contact.deleteMany({ where: { id: { in: ids } } });
   revalidatePath("/", "layout");
+}
+
+// ─── Kunden-Pipeline ────────────────────────────────────────────────────
+async function changeCustomerStage(contactId: string, next: CustomerStage) {
+  const c = await prisma.contact.findUniqueOrThrow({ where: { id: contactId }, select: { customerStage: true, customerSince: true } });
+  if (c.customerStage === next) return;
+  await prisma.contact.update({
+    where: { id: contactId },
+    data: {
+      customerStage: next,
+      stage: "GEWONNEN",
+      lossReason: null,
+      customerSince: next === "AKTIV" && !c.customerSince ? new Date() : undefined,
+    },
+  });
+  await prisma.activity.create({
+    data: {
+      contactId,
+      type: "STATUS",
+      outcome: `Kunde: ${c.customerStage ? CUSTOMER_LABEL[c.customerStage] : "–"} → ${CUSTOMER_LABEL[next]}`,
+    },
+  });
+}
+
+export async function updateCustomer(fd: FormData) {
+  await requireAuth();
+  const contactId = s(fd, "contactId")!;
+  const next = s(fd, "customerStage") as CustomerStage | null;
+  const value = s(fd, "monthlyValue");
+  const start = s(fd, "contractStart");
+  await prisma.contact.update({
+    where: { id: contactId },
+    data: {
+      products: s(fd, "products"),
+      monthlyValue: value ? Math.round(Number(value.replace(",", "."))) || null : null,
+      contractStart: start ? fromDayKey(start) : null,
+    },
+  });
+  if (next) await changeCustomerStage(contactId, next);
+  refresh(contactId);
+}
+
+/** Karte in der Kunden-Pipeline eine Spalte vor/zurück schieben */
+export async function moveCustomer(fd: FormData) {
+  await requireAuth();
+  const contactId = s(fd, "contactId")!;
+  const dir = Number(s(fd, "dir") ?? 1);
+  const c = await prisma.contact.findUniqueOrThrow({ where: { id: contactId }, select: { customerStage: true } });
+  const i = CUSTOMER_STAGES.findIndex((x) => x.id === c.customerStage);
+  const next = CUSTOMER_STAGES[Math.min(CUSTOMER_STAGES.length - 1, Math.max(0, i + dir))];
+  await changeCustomerStage(contactId, next.id);
+  refresh(contactId);
+}
+
+// ─── E-Mail-Antwort manuell erfassen (z.B. aus Gmail/Outlook kopiert) ───
+export async function addReplyManually(fd: FormData) {
+  await requireAuth();
+  const contactId = s(fd, "contactId")!;
+  const text = s(fd, "text");
+  if (!text) return;
+  const day = s(fd, "date");
+  await recordReply(contactId, {
+    subject: s(fd, "subject"),
+    text,
+    isAutoReply: false,
+    sentAt: day ? fromDayKey(day, "12:00") : new Date(),
+    campaign: "manuell",
+  });
+  refresh(contactId);
 }

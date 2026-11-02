@@ -23,6 +23,16 @@ enum Stage {
   UNGUELTIG
 }
 
+// Kunden-Pipeline: alles nach der Zusage
+enum CustomerStage {
+  VERTRAG       // Zusage, Vertrag versendet
+  ONBOARDING    // unterschrieben, Setup (Produkte, Gebiet, Kampagnen)
+  TEST          // Testpaket / erste Leads
+  AKTIV         // laufender Kunde
+  PAUSIERT
+  GEKUENDIGT
+}
+
 enum LossReason {
   KEIN_BEDARF       // ausgelastet, braucht keine Kunden
   HAT_ANBIETER      // kauft schon Leads / arbeitet mit Agentur
@@ -71,14 +81,23 @@ model Contact {
   lastContactAt DateTime?
   legacyStatus  String? // Original-Status aus der Cold-Calling-Liste
 
+  // Kunde (gesetzt ab Stufe Gewonnen)
+  customerStage CustomerStage?
+  products      String? // z.B. "PKV, TKV, Leben"
+  monthlyValue  Int? // € pro Monat
+  contractStart DateTime?
+  customerSince DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   activities Activity[]
   tasks      Task[]
   campaigns  CampaignLead[]
+  emails     EmailMessage[]
 
   @@index([stage])
+  @@index([customerStage])
   @@index([zip])
   @@index([city])
 }
@@ -139,4 +158,24 @@ model CampaignLead {
 
   @@unique([contactId, campaignId])
   @@index([campaignId])
+}
+
+// E-Mails aus Instantly (v.a. Antworten auf Cold Mails)
+model EmailMessage {
+  id          String   @id @default(cuid())
+  instantlyId String?  @unique
+  contactId   String
+  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  campaign    String?
+  direction   String   @default("IN") // IN = Antwort vom Kontakt, OUT = von uns
+  subject     String?
+  text        String?
+  html        String?
+  fromEmail   String?
+  threadId    String?
+  isAutoReply Boolean  @default(false)
+  sentAt      DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([contactId, sentAt])
 }

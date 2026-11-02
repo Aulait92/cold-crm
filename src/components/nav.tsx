@@ -8,7 +8,8 @@ import { logout } from "@/app/actions";
 const LINKS = [
   { href: "/", label: "Heute" },
   { href: "/aufgaben", label: "Aufgaben" },
-  { href: "/pipeline", label: "Pipeline" },
+  { href: "/pipeline", label: "Akquise-Pipeline" },
+  { href: "/kunden", label: "Kunden" },
   { href: "/kontakte", label: "Kontakte" },
   { href: "/import", label: "Import & Instantly" },
 ];

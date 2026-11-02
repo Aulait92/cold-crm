@@ -125,6 +125,7 @@ export async function importContactsCsv(text: string): Promise<ImportStats> {
           data: {
             legacyStatus: w.legacy.text,
             stage: res?.stage ?? undefined,
+            customerStage: res?.stage === "GEWONNEN" ? "VERTRAG" : undefined,
             lossReason: res?.lossReason ?? null,
             competitor: res?.competitor ?? undefined,
             callAttempts: { increment: 1 },

@@ -13,11 +13,16 @@ const INTEREST: Record<number, string> = {
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const key = process.env.INSTANTLY_API_KEY;
   if (!key) throw new Error("INSTANTLY_API_KEY ist nicht gesetzt.");
-  const res = await fetch(API + path, {
-    ...init,
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", ...init?.headers },
-    cache: "no-store",
-  });
+  let res: Response;
+  for (let attempt = 0; ; attempt++) {
+    res = await fetch(API + path, {
+      ...init,
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", ...init?.headers },
+      cache: "no-store",
+    });
+    if (res.status !== 429 || attempt >= 5) break;
+    await new Promise((r) => setTimeout(r, 4000));
+  }
   if (!res.ok) throw new Error(`Instantly ${path}: ${res.status} ${await res.text().catch(() => "")}`.slice(0, 300));
   return res.json() as Promise<T>;
 }
@@ -53,11 +58,11 @@ async function contactMap(emails: string[]) {
   return new Map(list.map((c) => [c.email, c.id]));
 }
 
-export type SyncStats = { campaigns: number; leads: number; matched: number; unmatched: number; sent: number; replies: number };
+export type SyncStats = { campaigns: number; leads: number; matched: number; unmatched: number; sent: number; replies: number; newReplies: number };
 
 /** Holt alle Kampagnen + Leads aus Instantly (API v2) und gleicht per E-Mail ab. */
 export async function syncInstantly(): Promise<SyncStats> {
-  const stats: SyncStats = { campaigns: 0, leads: 0, matched: 0, unmatched: 0, sent: 0, replies: 0 };
+  const stats: SyncStats = { campaigns: 0, leads: 0, matched: 0, unmatched: 0, sent: 0, replies: 0, newReplies: 0 };
   const campaigns: ApiCampaign[] = [];
   let cursor: string | undefined;
   do {
@@ -102,11 +107,146 @@ export async function syncInstantly(): Promise<SyncStats> {
           bounced: l.status === -1,
           unsubscribed: l.status === -2,
           interest: l.lt_interest_status != null ? INTEREST[l.lt_interest_status] ?? null : null,
-        }, campaign.name);
+        }, campaign.name, false);
       }
     } while (after);
   }
+  stats.newReplies = await syncReplies();
   return stats;
+}
+
+type ApiEmail = {
+  id: string;
+  timestamp_email: string;
+  timestamp_created: string;
+  subject: string;
+  from_address_email: string | null;
+  body: { text?: string; html?: string } | null;
+  content_preview: string | null;
+  lead: string | null;
+  campaign_id: string | null;
+  thread_id: string | null;
+  ue_type: number | null;
+  is_auto_reply: number | null;
+};
+
+/** Holt empfangene E-Mails (Antworten) aus der Instantly-Unibox und speichert sie am Kontakt. */
+export async function syncReplies(): Promise<number> {
+  const last = await prisma.emailMessage.findFirst({ where: { direction: "IN", instantlyId: { not: null } }, orderBy: { sentAt: "desc" } });
+  const since = last ? new Date(last.sentAt.getTime() - 3 * 86400000) : null;
+  const campaignNames = new Map((await prisma.campaign.findMany({ where: { instantlyId: { not: null } } })).map((c) => [c.instantlyId!, c.name]));
+  let created = 0;
+  let cursor: string | undefined;
+  do {
+    const q = new URLSearchParams({ email_type: "received", limit: "100", sort_order: "asc" });
+    if (since) q.set("min_timestamp_created", since.toISOString());
+    if (cursor) q.set("starting_after", cursor);
+    const page = await api<{ items: ApiEmail[]; next_starting_after?: string }>(`/emails?${q}`);
+    cursor = page.items.length ? page.next_starting_after : undefined;
+    const ids = await contactMap(page.items.map((e) => (e.lead ?? e.from_address_email ?? "").toLowerCase()).filter(Boolean));
+    for (const e of page.items) {
+      if (e.ue_type != null && e.ue_type !== 2) continue;
+      const contactId = ids.get((e.lead ?? e.from_address_email ?? "").toLowerCase());
+      if (!contactId) continue;
+      const isNew = await recordReply(contactId, {
+        instantlyId: e.id,
+        subject: e.subject,
+        text: e.body?.text ?? e.content_preview ?? null,
+        html: e.body?.html ?? null,
+        fromEmail: e.from_address_email,
+        threadId: e.thread_id,
+        isAutoReply: e.is_auto_reply === 1,
+        sentAt: new Date(e.timestamp_email || e.timestamp_created),
+        campaign: e.campaign_id ? campaignNames.get(e.campaign_id) ?? null : null,
+      });
+      if (isNew) created++;
+    }
+  } while (cursor);
+  return created;
+}
+
+type Reply = {
+  instantlyId?: string | null;
+  subject?: string | null;
+  text?: string | null;
+  html?: string | null;
+  fromEmail?: string | null;
+  threadId?: string | null;
+  isAutoReply: boolean;
+  sentAt: Date;
+  campaign?: string | null;
+};
+
+/**
+ * Speichert eine Antwort am Kontakt. Doppelte (gleiche Instantly-ID oder
+ * gleicher Betreff innerhalb von 15 Min., z.B. Webhook + Abgleich) werden
+ * erkannt. Echte Antworten erzeugen Verlaufseintrag + Aufgabe.
+ * Gibt true zurück, wenn die Antwort neu war.
+ */
+export async function recordReply(contactId: string, r: Reply): Promise<boolean> {
+  if (r.instantlyId && (await prisma.emailMessage.findUnique({ where: { instantlyId: r.instantlyId } }))) return false;
+  const dup = await prisma.emailMessage.findFirst({
+    where: {
+      contactId,
+      direction: "IN",
+      subject: r.subject ?? null,
+      sentAt: { gte: new Date(r.sentAt.getTime() - 15 * 60000), lte: new Date(r.sentAt.getTime() + 15 * 60000) },
+    },
+  });
+  if (dup) {
+    await prisma.emailMessage.update({
+      where: { id: dup.id },
+      data: { instantlyId: dup.instantlyId ?? r.instantlyId ?? null, text: dup.text ?? r.text, html: dup.html ?? r.html },
+    });
+    return false;
+  }
+  await prisma.emailMessage.create({
+    data: {
+      contactId,
+      instantlyId: r.instantlyId ?? null,
+      campaign: r.campaign ?? null,
+      direction: "IN",
+      subject: r.subject ?? null,
+      text: r.text ?? null,
+      html: r.html ?? null,
+      fromEmail: r.fromEmail ?? null,
+      threadId: r.threadId ?? null,
+      isAutoReply: r.isAutoReply,
+      sentAt: r.sentAt,
+    },
+  });
+
+  const snippet = stripQuoted(r.text ?? "").slice(0, 600) || r.subject || "";
+  const label = r.isAutoReply ? "Automatische Antwort" : "Antwort erhalten";
+  // Platzhalter aus einem früheren Abgleich (nur Zähler, ohne Text) ergänzen statt doppelt anlegen
+  const placeholder = await prisma.activity.findFirst({
+    where: {
+      contactId,
+      type: "COLD_MAIL",
+      outcome: "Antwort erhalten",
+      note: { startsWith: "Kampagne:" },
+      occurredAt: { gte: new Date(r.sentAt.getTime() - 3 * 86400000), lte: new Date(r.sentAt.getTime() + 3 * 86400000) },
+    },
+  });
+  if (placeholder) {
+    await prisma.activity.update({ where: { id: placeholder.id }, data: { note: snippet, occurredAt: r.sentAt } });
+    return true;
+  }
+  await prisma.activity.create({
+    data: { contactId, type: "COLD_MAIL", outcome: label, note: r.subject ? `${r.subject}\n\n${snippet}` : snippet, occurredAt: r.sentAt },
+  });
+  if (!r.isAutoReply) {
+    await prisma.task.create({
+      data: { contactId, title: "Auf Cold-Mail-Antwort reagieren", type: "NACHFASSEN", dueAt: new Date(), note: snippet.slice(0, 300) },
+    });
+  }
+  return true;
+}
+
+/** Schneidet zitierten Verlauf ab ("Am … schrieb …", "On … wrote:", "-----Original", "Von:") */
+export function stripQuoted(text: string): string {
+  const m = text.search(/^\s*(>|Am .{3,80}schrieb|On .{3,80}wrote|-{3,}\s*Original|Von:\s|From:\s|Gesendet von meinem)/im);
+  return (m > 0 ? text.slice(0, m) : text).trim();
 }
 
 type LeadData = {
@@ -123,7 +263,7 @@ type LeadData = {
 };
 
 /** Speichert den Kampagnen-Stand und legt bei neuer Antwort eine Aufgabe an. */
-async function saveLead(contactId: string, campaignId: string, d: LeadData, campaignName: string) {
+async function saveLead(contactId: string, campaignId: string, d: LeadData, campaignName: string, replyPlaceholder = true) {
   const prev = await prisma.campaignLead.findUnique({ where: { contactId_campaignId: { contactId, campaignId } } });
   await prisma.campaignLead.upsert({
     where: { contactId_campaignId: { contactId, campaignId } },
@@ -135,7 +275,7 @@ async function saveLead(contactId: string, campaignId: string, d: LeadData, camp
       data: { contactId, type: "COLD_MAIL", outcome: "Gesendet", note: `Kampagne: ${campaignName}`, occurredAt: d.sentAt },
     });
   }
-  if (d.replyCount > 0 && (prev?.replyCount ?? 0) === 0) {
+  if (replyPlaceholder && d.replyCount > 0 && (prev?.replyCount ?? 0) === 0) {
     await onReply(contactId, campaignName, d.lastReplyAt ?? new Date());
   }
 }
@@ -231,9 +371,23 @@ export async function handleWebhook(p: Record<string, unknown>) {
       await prisma.campaignLead.upsert({ where: key, create: { ...base, clickCount: 1 }, update: { clickCount: { increment: 1 } } });
       break;
     case "reply_received":
-      await prisma.campaignLead.upsert({ where: key, create: { ...base, replyCount: 1, lastReplyAt: at }, update: { replyCount: { increment: 1 }, lastReplyAt: at } });
-      await onReply(contact.id, name, at, p.reply_text_snippet ? String(p.reply_text_snippet).slice(0, 500) : undefined);
+    case "auto_reply_received": {
+      const auto = type === "auto_reply_received";
+      const str = (v: unknown) => (v == null || v === "" ? null : String(v));
+      const isNew = await recordReply(contact.id, {
+        subject: str(p.reply_subject),
+        text: str(p.reply_text) ?? str(p.reply_text_snippet),
+        html: str(p.reply_html),
+        fromEmail: email,
+        isAutoReply: auto,
+        sentAt: at,
+        campaign: name,
+      });
+      if (isNew && !auto) {
+        await prisma.campaignLead.upsert({ where: key, create: { ...base, replyCount: 1, lastReplyAt: at }, update: { replyCount: { increment: 1 }, lastReplyAt: at } });
+      }
       break;
+    }
     case "email_bounced":
       await prisma.campaignLead.upsert({ where: key, create: { ...base, bounced: true, status: "Bounced" }, update: { bounced: true, status: "Bounced" } });
       break;

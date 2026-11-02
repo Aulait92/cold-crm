@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { ACTIVITY_LABEL, LOSS_LABEL, LOSS_REASONS, STAGES, shortName } from "@/lib/crm";
-import { fmtDate, fmtDateTime } from "@/lib/dates";
+import { ACTIVITY_LABEL, CUSTOMER_COLOR, CUSTOMER_LABEL, CUSTOMER_STAGES, LOSS_LABEL, LOSS_REASONS, STAGES, shortName } from "@/lib/crm";
+import { dayKey, fmtDate, fmtDateTime, todayKey } from "@/lib/dates";
+import { stripQuoted } from "@/lib/instantly";
 import { StageBadge, TaskRow } from "@/components/ui";
 import { ActivityForm } from "@/components/activity-form";
 import { TaskForm } from "@/components/task-form";
-import { deleteContact, setStage } from "@/app/actions";
+import { addReplyManually, deleteContact, setStage, updateCustomer } from "@/app/actions";
 import { ConfirmButton } from "@/components/confirm-button";
 import { taskInclude } from "@/lib/queries";
 
@@ -18,6 +19,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
       activities: { orderBy: { occurredAt: "desc" } },
       tasks: { include: taskInclude, orderBy: [{ doneAt: { sort: "desc", nulls: "first" } }, { dueAt: "asc" }] },
       campaigns: { include: { campaign: true }, orderBy: { sentAt: "desc" } },
+      emails: { orderBy: { sentAt: "desc" } },
     },
   });
   if (!c) notFound();
@@ -32,6 +34,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
           <h1 className="mt-1 text-2xl font-semibold">{shortName(c.name)}</h1>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
             <StageBadge stage={c.stage} />
+            {c.customerStage && <span className={`badge ${CUSTOMER_COLOR[c.customerStage]}`}>Kunde: {CUSTOMER_LABEL[c.customerStage]}</span>}
             {c.lossReason && <span className="badge bg-rose-50 text-rose-700">{LOSS_LABEL[c.lossReason]}</span>}
             {c.competitor && <span className="badge bg-slate-100 text-slate-600">{c.competitor}</span>}
             <span>{c.street}, {c.zip} {c.city}</span>
@@ -59,6 +62,54 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
           <section className="card p-4">
             <h2 className="mb-3 font-medium">Aktivität erfassen</h2>
             <ActivityForm contactId={c.id} hasOpenTasks={open.length > 0} />
+          </section>
+
+          <section className="card">
+            <h2 className="border-b border-slate-100 px-4 py-3 font-medium">
+              Antworten auf Cold Mails <span className="font-normal text-slate-400">({c.emails.length})</span>
+            </h2>
+            {c.emails.length > 0 && (
+              <ol className="divide-y divide-slate-100">
+                {c.emails.map((e) => {
+                  const body = e.text ?? "";
+                  const main = stripQuoted(body);
+                  const quoted = body.length > main.length + 5 ? body.slice(main.length).trim() : "";
+                  return (
+                    <li key={e.id} className="px-4 py-3 text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`badge ${e.isAutoReply ? "bg-slate-100 text-slate-600" : "bg-emerald-100 text-emerald-800"}`}>
+                          {e.isAutoReply ? "Auto-Reply" : "Antwort"}
+                        </span>
+                        <span className="font-medium">{e.subject || "(ohne Betreff)"}</span>
+                        <span className="ml-auto text-xs text-slate-400">{fmtDateTime(e.sentAt)}</span>
+                      </div>
+                      <div className="mt-0.5 text-xs text-slate-400">
+                        {e.fromEmail}{e.campaign ? ` · Kampagne: ${e.campaign}` : ""}
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-slate-700">{main || "(kein Text)"}</p>
+                      {quoted && (
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-xs text-slate-400">Zitierten Verlauf anzeigen</summary>
+                          <p className="mt-1 whitespace-pre-wrap text-xs text-slate-500">{quoted}</p>
+                        </details>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+            <details className="border-t border-slate-100">
+              <summary className="cursor-pointer px-4 py-2 text-sm text-slate-500">Antwort manuell einfügen</summary>
+              <form action={addReplyManually} className="space-y-2 px-4 pb-4">
+                <input type="hidden" name="contactId" value={c.id} />
+                <div className="grid gap-2 sm:grid-cols-[1fr_150px]">
+                  <input name="subject" placeholder="Betreff" className="input" />
+                  <input name="date" type="date" defaultValue={todayKey()} className="input" />
+                </div>
+                <textarea name="text" rows={4} required placeholder="Antworttext hier einfügen" className="input" />
+                <button className="btn-ghost">Antwort speichern</button>
+              </form>
+            </details>
           </section>
 
           <section className="card">
@@ -115,6 +166,34 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
             ) : (
               <p className="text-sm text-slate-500">Hat noch keine Cold Mail bekommen.</p>
             )}
+          </section>
+
+          <section className="card p-4">
+            <h2 className="mb-3 font-medium">Kunde</h2>
+            <form key={`${c.customerStage}-${c.monthlyValue}-${c.products}`} action={updateCustomer} className="grid gap-2 sm:grid-cols-2">
+              <input type="hidden" name="contactId" value={c.id} />
+              <div>
+                <label className="label">Kunden-Stufe</label>
+                <select name="customerStage" defaultValue={c.customerStage ?? ""} className="input">
+                  <option value="">{c.customerStage ? "–" : "Noch kein Kunde"}</option>
+                  {CUSTOMER_STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Monatswert (€)</label>
+                <input name="monthlyValue" inputMode="numeric" defaultValue={c.monthlyValue ?? ""} placeholder="z.B. 1250" className="input" />
+              </div>
+              <div>
+                <label className="label">Produkte</label>
+                <input name="products" defaultValue={c.products ?? ""} placeholder="PKV, TKV, Leben" className="input" />
+              </div>
+              <div>
+                <label className="label">Vertragsstart</label>
+                <input name="contractStart" type="date" defaultValue={c.contractStart ? dayKey(c.contractStart) : ""} className="input" />
+              </div>
+              <button className="btn-ghost sm:col-span-2">{c.customerStage ? "Speichern" : "Als Kunde speichern"}</button>
+            </form>
+            {c.customerSince && <p className="mt-2 text-xs text-slate-500">Aktiver Kunde seit {fmtDate(c.customerSince)}</p>}
           </section>
 
           <section className="card p-4">

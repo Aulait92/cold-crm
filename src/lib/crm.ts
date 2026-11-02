@@ -1,4 +1,4 @@
-import type { ActivityType, LossReason, Stage, TaskType } from "@/generated/prisma/enums";
+import type { ActivityType, CustomerStage, LossReason, Stage, TaskType } from "@/generated/prisma/enums";
 
 export const STAGES: { id: Stage; label: string; color: string; hint: string }[] = [
   { id: "NEU", label: "Neu", color: "bg-slate-100 text-slate-700", hint: "Noch kein Kontakt" },
@@ -84,3 +84,16 @@ export const CAMPAIGN_STATUS: Record<number, string> = {
 export function shortName(name: string): string {
   return name.replace(/^Allianz Versicherung\s+/i, "").replace(/\s+HAUPTVERTRETUNG$/i, "").trim() || name;
 }
+
+
+// ─── Kunden-Pipeline (nach der Zusage) ──────────────────────────────────
+export const CUSTOMER_STAGES: { id: CustomerStage; label: string; color: string; hint: string }[] = [
+  { id: "VERTRAG", label: "Vertrag versendet", color: "bg-amber-100 text-amber-800", hint: "Zusage da, Vertrag noch nicht unterschrieben" },
+  { id: "ONBOARDING", label: "Onboarding", color: "bg-sky-100 text-sky-800", hint: "Unterschrieben – Produkte, Gebiet, Kampagnen aufsetzen" },
+  { id: "TEST", label: "Testphase", color: "bg-violet-100 text-violet-800", hint: "Erste Leads / Testpaket läuft" },
+  { id: "AKTIV", label: "Aktiv", color: "bg-emerald-100 text-emerald-800", hint: "Laufender Kunde, Leads werden geliefert" },
+  { id: "PAUSIERT", label: "Pausiert", color: "bg-slate-200 text-slate-700", hint: "Lieferung pausiert (Budget, Urlaub, Auslastung)" },
+  { id: "GEKUENDIGT", label: "Gekündigt", color: "bg-rose-100 text-rose-800", hint: "Kein Kunde mehr" },
+];
+export const CUSTOMER_LABEL = Object.fromEntries(CUSTOMER_STAGES.map((s) => [s.id, s.label])) as Record<CustomerStage, string>;
+export const CUSTOMER_COLOR = Object.fromEntries(CUSTOMER_STAGES.map((s) => [s.id, s.color])) as Record<CustomerStage, string>;
