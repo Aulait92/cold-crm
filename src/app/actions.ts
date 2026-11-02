@@ -201,3 +201,20 @@ export async function syncInstantlyAction(prev: ImportState): Promise<ImportStat
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
 }
+
+// ─── Kontakte löschen ───────────────────────────────────────────────────
+// Löscht auch Verlauf, Aufgaben und Cold-Mail-Status (Cascade).
+export async function deleteContact(fd: FormData) {
+  await requireAuth();
+  const id = s(fd, "contactId");
+  if (id) await prisma.contact.delete({ where: { id } });
+  revalidatePath("/", "layout");
+  redirect("/kontakte");
+}
+
+export async function deleteContacts(fd: FormData) {
+  await requireAuth();
+  const ids = fd.getAll("ids").filter((v): v is string => typeof v === "string" && !!v);
+  if (ids.length) await prisma.contact.deleteMany({ where: { id: { in: ids } } });
+  revalidatePath("/", "layout");
+}

@@ -6,7 +6,8 @@ import { fmtDate, fmtDateTime } from "@/lib/dates";
 import { StageBadge, TaskRow } from "@/components/ui";
 import { ActivityForm } from "@/components/activity-form";
 import { TaskForm } from "@/components/task-form";
-import { setStage } from "@/app/actions";
+import { deleteContact, setStage } from "@/app/actions";
+import { ConfirmButton } from "@/components/confirm-button";
 import { taskInclude } from "@/lib/queries";
 
 export default async function ContactPage({ params }: { params: Promise<{ id: string }> }) {
@@ -41,6 +42,15 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
           {c.phone && <a href={`tel:${c.phone.replace(/\s/g, "")}`} className="btn-primary">📞 {c.phone}</a>}
           <a href={`mailto:${c.email}`} className="btn-ghost">✉️ {c.email}</a>
           {c.url && <a href={c.url} target="_blank" rel="noreferrer" className="btn-ghost">Website ↗</a>}
+          <form action={deleteContact}>
+            <input type="hidden" name="contactId" value={c.id} />
+            <ConfirmButton
+              message={`„${shortName(c.name)}“ wirklich löschen? Verlauf, Aufgaben und Cold-Mail-Status werden mit gelöscht.`}
+              className="btn-ghost text-rose-600 hover:bg-rose-50"
+            >
+              🗑 Löschen
+            </ConfirmButton>
+          </form>
         </div>
       </div>
 

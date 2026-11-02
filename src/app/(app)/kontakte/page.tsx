@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { STAGES, shortName } from "@/lib/crm";
 import { fmtDate } from "@/lib/dates";
 import { StageBadge } from "@/components/ui";
+import { deleteContacts } from "@/app/actions";
+import { ConfirmButton, SelectAll } from "@/components/confirm-button";
 import type { Prisma } from "@/generated/prisma/client";
 import type { Stage } from "@/generated/prisma/enums";
 
@@ -87,10 +89,22 @@ export default async function KontaktePage({ searchParams }: { searchParams: Pro
         </div>
       </form>
 
+      <form id="bulk" action={deleteContacts} className="flex items-center justify-between gap-2 text-sm text-slate-500">
+        <span>Kontakte per Häkchen auswählen, um sie zu löschen.</span>
+        <ConfirmButton
+          form="bulk"
+          message="Ausgewählte Kontakte wirklich löschen? Verlauf, Aufgaben und Cold-Mail-Status werden mit gelöscht."
+          className="btn-ghost text-rose-600 hover:bg-rose-50"
+        >
+          🗑 Ausgewählte löschen
+        </ConfirmButton>
+      </form>
+
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="border-b border-slate-100 text-left text-xs text-slate-500">
             <tr>
+              <th className="w-8 py-2 pl-4"><SelectAll form="bulk" /></th>
               <th className="px-4 py-2 font-medium">Agentur</th>
               <th className="px-4 py-2 font-medium">Ort</th>
               <th className="px-4 py-2 font-medium">Telefon</th>
@@ -108,6 +122,7 @@ export default async function KontaktePage({ searchParams }: { searchParams: Pro
               const bounced = c.campaigns.some((x) => x.bounced);
               return (
                 <tr key={c.id} className="hover:bg-slate-50">
+                  <td className="py-2 pl-4"><input type="checkbox" name="ids" value={c.id} form="bulk" aria-label="Auswählen" /></td>
                   <td className="px-4 py-2">
                     <Link href={`/kontakte/${c.id}`} className="font-medium hover:underline">{shortName(c.name)}</Link>
                     {c.ratingValue != null && <span className="ml-2 text-xs text-slate-400">★ {c.ratingValue} ({c.ratingCount})</span>}
