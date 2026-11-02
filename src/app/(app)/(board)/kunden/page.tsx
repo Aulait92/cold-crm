@@ -89,7 +89,7 @@ export default async function KundenPage() {
         <Stat label="Potenzial in Vorbereitung" value={eur(sum(["VERTRAG", "ONBOARDING", "TEST"]))} />
       </div>
 
-      <Kanban columns={columns} cards={cards} move={dragCustomer} showValue />
+      <Kanban columns={columns} cards={cards} move={dragCustomer} showValue topOffset={290} />
       <p className="text-sm text-slate-500">
         Kontakte landen hier automatisch, sobald sie in der Akquise auf „Gewonnen“ gesetzt werden. Produkte, Monatswert und Vertragsstart pflegst du auf der Kontaktseite.
       </p>

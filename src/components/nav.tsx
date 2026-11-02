@@ -18,7 +18,7 @@ export function Nav({ dueCount }: { dueCount: number }) {
   const path = usePathname();
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex max-w-[1600px] items-center gap-1 overflow-x-auto px-4 py-2">
+      <div className="flex items-center gap-1 overflow-x-auto px-4 py-2">
         <span className="mr-4 font-semibold tracking-tight">Cold CRM</span>
         {LINKS.map((l) => {
           const active = l.href === "/" ? path === "/" : path.startsWith(l.href);

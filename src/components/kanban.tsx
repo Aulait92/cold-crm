@@ -23,11 +23,13 @@ type Props = {
   reasonColumn?: string;
   reasons?: { id: string; label: string }[];
   showValue?: boolean;
+  /** Platz über dem Board (Navigation, Überschrift …) in px, damit es genau bis zum Bildschirmrand reicht */
+  topOffset?: number;
 };
 
 const eur = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 
-export function Kanban({ columns, cards, move, reasonColumn, reasons, showValue }: Props) {
+export function Kanban({ columns, cards, move, reasonColumn, reasons, showValue, topOffset = 150 }: Props) {
   const [moved, setMoved] = useState<Record<string, string>>({});
   const [order, setOrder] = useState<string[]>([]); // zuletzt verschobene Karten zuerst
   const [dragId, setDragId] = useState<string | null>(null);
@@ -96,7 +98,7 @@ export function Kanban({ columns, cards, move, reasonColumn, reasons, showValue 
   return (
     <>
       {error && <p className="mb-2 text-sm text-rose-600">{error}</p>}
-      <div className="flex gap-3 overflow-x-auto pb-4">
+      <div className="flex min-h-[420px] gap-3 overflow-x-auto pb-2" style={{ height: `calc(100vh - ${topOffset}px)` }}>
         {columns.map((col) => {
           const items = byColumn[col.id] ?? [];
           const value = showValue ? items.reduce((a, c) => a + (c.value ?? 0), 0) : 0;
@@ -117,7 +119,7 @@ export function Kanban({ columns, cards, move, reasonColumn, reasons, showValue 
                 onDrop(col.id);
               }}
               className={clsx(
-                "flex min-h-[60vh] w-72 shrink-0 flex-col rounded-xl p-2 transition-colors",
+                "flex min-w-[190px] flex-1 basis-0 flex-col rounded-xl p-2 transition-colors",
                 over === col.id ? "bg-sky-100 ring-2 ring-sky-400" : "bg-slate-100/80",
               )}
             >
@@ -129,7 +131,7 @@ export function Kanban({ columns, cards, move, reasonColumn, reasons, showValue 
                 </span>
               </header>
               <p className="px-1 pb-2 text-xs text-slate-500">{col.hint}</p>
-              <div className="space-y-2">
+              <div className="-mx-1 flex-1 space-y-2 overflow-y-auto px-1 pb-1">
                 {col.top}
                 {items.map((c) => (
                   <div
