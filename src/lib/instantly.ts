@@ -1,7 +1,7 @@
 import Papa from "papaparse";
 import { prisma } from "@/lib/prisma";
 import { CAMPAIGN_STATUS } from "@/lib/crm";
-import { addWorkdays } from "@/lib/dates";
+import { classifyReply, sentimentFromInstantly, type Sentiment } from "@/lib/sentiment";
 
 const API = "https://api.instantly.ai/api/v2";
 
@@ -128,6 +128,7 @@ type ApiEmail = {
   thread_id: string | null;
   ue_type: number | null;
   is_auto_reply: number | null;
+  i_status?: number | null;
 };
 
 /** Holt empfangene E-Mails (Antworten) aus der Instantly-Unibox und speichert sie am Kontakt. */
@@ -158,6 +159,7 @@ export async function syncReplies(): Promise<number> {
         isAutoReply: e.is_auto_reply === 1,
         sentAt: new Date(e.timestamp_email || e.timestamp_created),
         campaign: e.campaign_id ? campaignNames.get(e.campaign_id) ?? null : null,
+        interest: e.i_status ?? null,
       });
       if (isNew) created++;
     }
@@ -175,6 +177,7 @@ type Reply = {
   isAutoReply: boolean;
   sentAt: Date;
   campaign?: string | null;
+  interest?: number | null; // Instantly-Interessenstatus, falls bekannt
 };
 
 /**
@@ -200,8 +203,10 @@ export async function recordReply(contactId: string, r: Reply): Promise<boolean>
     });
     return false;
   }
+  const sentiment: Sentiment = r.isAutoReply ? "NEUTRAL" : sentimentFromInstantly(r.interest) ?? classifyReply(stripQuoted(r.text ?? ""), r.subject?.replace(/^(re|aw|antw|fwd?|wg):\s*/i, ""));
   await prisma.emailMessage.create({
     data: {
+      sentiment,
       contactId,
       instantlyId: r.instantlyId ?? null,
       campaign: r.campaign ?? null,
@@ -217,7 +222,9 @@ export async function recordReply(contactId: string, r: Reply): Promise<boolean>
   });
 
   const snippet = stripQuoted(r.text ?? "").slice(0, 600) || r.subject || "";
-  const label = r.isAutoReply ? "Automatische Antwort" : "Antwort erhalten";
+  const label = r.isAutoReply
+    ? "Automatische Antwort"
+    : `Antwort erhalten (${sentiment === "POSITIV" ? "positiv" : sentiment === "NEGATIV" ? "negativ" : "neutral"})`;
   // Platzhalter aus einem früheren Abgleich (nur Zähler, ohne Text) ergänzen statt doppelt anlegen
   const placeholder = await prisma.activity.findFirst({
     where: {
@@ -229,18 +236,24 @@ export async function recordReply(contactId: string, r: Reply): Promise<boolean>
     },
   });
   if (placeholder) {
-    await prisma.activity.update({ where: { id: placeholder.id }, data: { note: snippet, occurredAt: r.sentAt } });
-    return true;
-  }
-  await prisma.activity.create({
-    data: { contactId, type: "COLD_MAIL", outcome: label, note: r.subject ? `${r.subject}\n\n${snippet}` : snippet, occurredAt: r.sentAt },
-  });
-  if (!r.isAutoReply) {
-    await prisma.task.create({
-      data: { contactId, title: "Auf Cold-Mail-Antwort reagieren", type: "NACHFASSEN", dueAt: new Date(), note: snippet.slice(0, 300) },
+    await prisma.activity.update({ where: { id: placeholder.id }, data: { outcome: label, note: snippet, occurredAt: r.sentAt } });
+  } else {
+    await prisma.activity.create({
+      data: { contactId, type: "COLD_MAIL", outcome: label, note: r.subject ? `${r.subject}\n\n${snippet}` : snippet, occurredAt: r.sentAt },
     });
   }
+  // Aufgabe nur bei positiver Antwort
+  if (sentiment === "POSITIV") await ensureReplyTask(contactId, snippet.slice(0, 300));
   return true;
+}
+
+const REPLY_TASKS = ["Auf Cold-Mail-Antwort reagieren", "Interessent aus Cold Mail anrufen"];
+
+/** Legt die Antwort-Aufgabe an, außer es gibt schon eine offene. */
+export async function ensureReplyTask(contactId: string, note?: string | null, title = REPLY_TASKS[0]) {
+  const open = await prisma.task.findFirst({ where: { contactId, doneAt: null, title: { in: REPLY_TASKS } } });
+  if (open) return;
+  await prisma.task.create({ data: { contactId, title, type: "NACHFASSEN", dueAt: new Date(), note: note ?? null } });
 }
 
 /** Schneidet zitierten Verlauf ab ("Am … schrieb …", "On … wrote:", "-----Original", "Von:") */
@@ -275,17 +288,19 @@ async function saveLead(contactId: string, campaignId: string, d: LeadData, camp
       data: { contactId, type: "COLD_MAIL", outcome: "Gesendet", note: `Kampagne: ${campaignName}`, occurredAt: d.sentAt },
     });
   }
+  // Instantly hat den Lead als interessiert markiert → Aufgabe
+  if (d.interest && d.interest !== prev?.interest && ["Interessiert", "Termin gebucht"].includes(d.interest)) {
+    await ensureReplyTask(contactId, `Instantly: ${d.interest} (Kampagne „${campaignName}“)`, "Interessent aus Cold Mail anrufen");
+  }
   if (replyPlaceholder && d.replyCount > 0 && (prev?.replyCount ?? 0) === 0) {
     await onReply(contactId, campaignName, d.lastReplyAt ?? new Date());
   }
 }
 
-async function onReply(contactId: string, campaignName: string, at: Date, snippet?: string) {
+async function onReply(contactId: string, campaignName: string, at: Date) {
+  // Nur Zähler bekannt (CSV-Import), kein Text → keine Aufgabe, nur Verlaufseintrag
   await prisma.activity.create({
-    data: { contactId, type: "COLD_MAIL", outcome: "Antwort erhalten", note: snippet ? `${campaignName}: ${snippet}` : `Kampagne: ${campaignName}`, occurredAt: at },
-  });
-  await prisma.task.create({
-    data: { contactId, title: "Auf Cold-Mail-Antwort reagieren", type: "NACHFASSEN", dueAt: new Date(), note: snippet ?? `Antwort in Kampagne „${campaignName}“ – siehe Instantly Unibox` },
+    data: { contactId, type: "COLD_MAIL", outcome: "Antwort erhalten", note: `Kampagne: ${campaignName}`, occurredAt: at },
   });
 }
 
@@ -397,7 +412,12 @@ export async function handleWebhook(p: Record<string, unknown>) {
     case "lead_interested":
     case "lead_meeting_booked":
       await prisma.campaignLead.upsert({ where: key, create: { ...base, interest: type === "lead_interested" ? "Interessiert" : "Termin gebucht" }, update: { interest: type === "lead_interested" ? "Interessiert" : "Termin gebucht" } });
-      await prisma.task.create({ data: { contactId: contact.id, title: type === "lead_interested" ? "Interessent aus Cold Mail anrufen" : "Termin aus Cold Mail vorbereiten", type: "ANRUF", dueAt: addWorkdays(new Date(), 0) } });
+      await prisma.emailMessage.updateMany({ where: { contactId: contact.id, direction: "IN", isAutoReply: false, sentiment: { not: "POSITIV" } }, data: { sentiment: "POSITIV" } });
+      if (type === "lead_meeting_booked") {
+        await prisma.task.create({ data: { contactId: contact.id, title: "Termin aus Cold Mail vorbereiten", type: "TERMIN", dueAt: new Date() } });
+      } else {
+        await ensureReplyTask(contact.id, `Instantly: als interessiert markiert (Kampagne „${name}“)`, "Interessent aus Cold Mail anrufen");
+      }
       break;
     default:
       return { ignored: type };

@@ -7,7 +7,7 @@ import { stripQuoted } from "@/lib/instantly";
 import { StageBadge, TaskRow } from "@/components/ui";
 import { ActivityForm } from "@/components/activity-form";
 import { TaskForm } from "@/components/task-form";
-import { addReplyManually, deleteContact, setStage, updateCustomer } from "@/app/actions";
+import { addReplyManually, deleteContact, setReplySentiment, setStage, updateCustomer } from "@/app/actions";
 import { ConfirmButton } from "@/components/confirm-button";
 import { taskInclude } from "@/lib/queries";
 
@@ -80,6 +80,11 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
                         <span className={`badge ${e.isAutoReply ? "bg-slate-100 text-slate-600" : "bg-emerald-100 text-emerald-800"}`}>
                           {e.isAutoReply ? "Auto-Reply" : "Antwort"}
                         </span>
+                        {!e.isAutoReply && e.sentiment && (
+                          <span className={`badge ${e.sentiment === "POSITIV" ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" : e.sentiment === "NEGATIV" ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200" : "bg-slate-50 text-slate-500 ring-1 ring-slate-200"}`}>
+                            {e.sentiment === "POSITIV" ? "positiv" : e.sentiment === "NEGATIV" ? "negativ" : "neutral"}
+                          </span>
+                        )}
                         <span className="font-medium">{e.subject || "(ohne Betreff)"}</span>
                         <span className="ml-auto text-xs text-slate-400">{fmtDateTime(e.sentAt)}</span>
                       </div>
@@ -87,6 +92,18 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
                         {e.fromEmail}{e.campaign ? ` · Kampagne: ${e.campaign}` : ""}
                       </div>
                       <p className="mt-2 whitespace-pre-wrap text-slate-700">{main || "(kein Text)"}</p>
+                      {!e.isAutoReply && (
+                        <div className="mt-2 flex items-center gap-1 text-xs text-slate-400">
+                          Einordnung ändern:
+                          {(["POSITIV", "NEUTRAL", "NEGATIV"] as const).filter((x) => x !== e.sentiment).map((x) => (
+                            <form key={x} action={setReplySentiment}>
+                              <input type="hidden" name="id" value={e.id} />
+                              <input type="hidden" name="sentiment" value={x} />
+                              <button className="btn-ghost px-2 py-0.5 text-xs">{x === "POSITIV" ? "👍 positiv" : x === "NEGATIV" ? "👎 negativ" : "neutral"}</button>
+                            </form>
+                          ))}
+                        </div>
+                      )}
                       {quoted && (
                         <details className="mt-1">
                           <summary className="cursor-pointer text-xs text-slate-400">Zitierten Verlauf anzeigen</summary>

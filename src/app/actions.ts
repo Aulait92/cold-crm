@@ -8,7 +8,7 @@ import { CUSTOMER_LABEL, CUSTOMER_STAGES, OUTCOME_BY_ID, STAGE_RANK, STAGE_LABEL
 import { addDays, fromDayKey } from "@/lib/dates";
 import type { ActivityType, CustomerStage, LossReason, Stage, TaskType } from "@/generated/prisma/enums";
 import { importContactsCsv } from "@/lib/import-contacts";
-import { importInstantlyCsv, recordReply, syncInstantly } from "@/lib/instantly";
+import { ensureReplyTask, importInstantlyCsv, recordReply, syncInstantly } from "@/lib/instantly";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -292,4 +292,49 @@ export async function addReplyManually(fd: FormData) {
     campaign: "manuell",
   });
   refresh(contactId);
+}
+
+// ─── Drag & Drop in den Kanban-Ansichten ────────────────────────────────
+const STAGE_IDS: Stage[] = ["NEU", "NICHT_ERREICHT", "WIEDERVORLAGE", "INTERESSE", "TERMIN", "GEWONNEN", "SPAETER", "VERLOREN", "UNGUELTIG"];
+
+export async function dragStage(contactId: string, stage: string, lossReason?: string) {
+  await requireAuth();
+  if (!STAGE_IDS.includes(stage as Stage)) throw new Error("Unbekannte Stufe");
+  const to = stage as Stage;
+  const before = await prisma.contact.findUniqueOrThrow({ where: { id: contactId }, select: { stage: true, customerStage: true } });
+  if (before.stage === to) return;
+  await prisma.contact.update({
+    where: { id: contactId },
+    data: {
+      stage: to,
+      lossReason: to === "VERLOREN" ? ((lossReason as LossReason) ?? "SONSTIGES") : null,
+      customerStage: to === "GEWONNEN" && !before.customerStage ? "VERTRAG" : undefined,
+    },
+  });
+  await prisma.activity.create({
+    data: { contactId, type: "STATUS", outcome: `${STAGE_LABEL[before.stage]} → ${STAGE_LABEL[to]}` },
+  });
+  // Verloren/Ungültig: offene Aufgaben schließen
+  if (to === "VERLOREN" || to === "UNGUELTIG") {
+    await prisma.task.updateMany({ where: { contactId, doneAt: null }, data: { doneAt: new Date() } });
+  }
+  refresh(contactId);
+}
+
+export async function dragCustomer(contactId: string, customerStage: string) {
+  await requireAuth();
+  if (!CUSTOMER_STAGES.some((c) => c.id === customerStage)) throw new Error("Unbekannte Kunden-Stufe");
+  await changeCustomerStage(contactId, customerStage as CustomerStage);
+  refresh(contactId);
+}
+
+/** Antwort manuell als positiv/negativ einordnen (positiv → Aufgabe) */
+export async function setReplySentiment(fd: FormData) {
+  await requireAuth();
+  const id = s(fd, "id")!;
+  const sentiment = s(fd, "sentiment");
+  if (!sentiment || !["POSITIV", "NEGATIV", "NEUTRAL"].includes(sentiment)) return;
+  const e = await prisma.emailMessage.update({ where: { id }, data: { sentiment } });
+  if (sentiment === "POSITIV") await ensureReplyTask(e.contactId, (e.text ?? e.subject ?? "").slice(0, 300));
+  refresh(e.contactId);
 }
