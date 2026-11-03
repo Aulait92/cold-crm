@@ -2,13 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { ACTIVITY_LABEL, CUSTOMER_COLOR, CUSTOMER_LABEL, CUSTOMER_STAGES, SOURCES, SOURCE_COLOR, SOURCE_LABEL, LOSS_LABEL, LOSS_REASONS, STAGES, shortName } from "@/lib/crm";
-import { dayKey, fmtDate, fmtDateTime, todayKey } from "@/lib/dates";
+import { dayKey, fmtDate, fmtDateTime, timeKey, todayKey } from "@/lib/dates";
 import { stripQuoted } from "@/lib/instantly";
 import { StageBadge, TaskRow } from "@/components/ui";
 import { ActivityForm } from "@/components/activity-form";
 import { Collapsible } from "@/components/collapsible";
 import { TaskForm } from "@/components/task-form";
-import { addReplyManually, deleteContact, setReplySentiment, setStage, updateCustomer, updateLinkedIn } from "@/app/actions";
+import { addReplyManually, deleteActivity, deleteContact, updateActivity, setReplySentiment, setStage, updateCustomer, updateLinkedIn } from "@/app/actions";
 import { LI_COLOR, LI_LABEL, LI_STATUSES } from "@/lib/linkedin";
 import { ConfirmButton } from "@/components/confirm-button";
 import { taskInclude } from "@/lib/queries";
@@ -150,6 +150,25 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
                     <span className="ml-auto text-xs text-slate-400">{fmtDateTime(a.occurredAt)}</span>
                   </div>
                   {a.note && <p className="mt-1 whitespace-pre-wrap text-slate-600">{a.note}</p>}
+                  <details className="mt-1">
+                    <summary className="cursor-pointer list-none text-xs text-slate-400 hover:text-slate-600 [&::-webkit-details-marker]:hidden">✎ Bearbeiten</summary>
+                    <form key={`${a.outcome}-${a.note}-${a.occurredAt.getTime()}-${a.type}`} action={updateActivity} className="mt-2 grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-[130px_1fr_140px_100px]">
+                      <input type="hidden" name="id" value={a.id} />
+                      <select name="type" defaultValue={a.type} className="input">
+                        {Object.entries(ACTIVITY_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                      </select>
+                      <input name="outcome" defaultValue={a.outcome ?? ""} placeholder="Ergebnis" className="input" />
+                      <input name="date" type="date" defaultValue={dayKey(a.occurredAt)} className="input" required />
+                      <input name="time" type="time" defaultValue={timeKey(a.occurredAt)} className="input" />
+                      <textarea name="note" rows={3} defaultValue={a.note ?? ""} placeholder="Notiz" className="input sm:col-span-4" />
+                      <div className="flex justify-between gap-2 sm:col-span-4">
+                        <button className="btn-primary">Speichern</button>
+                        <ConfirmButton formAction={deleteActivity} message="Diesen Verlaufseintrag wirklich löschen?" className="btn-ghost text-rose-600 hover:bg-rose-50">
+                          🗑 Eintrag löschen
+                        </ConfirmButton>
+                      </div>
+                    </form>
+                  </details>
                 </li>
               ))}
               {!c.activities.length && <li className="px-4 py-6 text-center text-sm text-slate-500">Noch keine Aktivitäten.</li>}

@@ -56,3 +56,8 @@ export function relDay(d: Date): string {
   if (diff < 0) return `vor ${-diff} Tagen`;
   return `in ${diff} Tagen`;
 }
+
+/** Uhrzeit HH:MM in deutscher Zeit */
+export function timeKey(d: Date): string {
+  return d.toLocaleTimeString("de-DE", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false });
+}

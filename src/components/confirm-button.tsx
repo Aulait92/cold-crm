@@ -6,16 +6,20 @@ export function ConfirmButton({
   className,
   children,
   form,
+  formAction,
 }: {
   message: string;
   className?: string;
   children: React.ReactNode;
   form?: string;
+  formAction?: (fd: FormData) => void | Promise<void>;
 }) {
   return (
     <button
       type="submit"
       form={form}
+      formAction={formAction}
+      formNoValidate={!!formAction}
       className={className}
       onClick={(e) => {
         if (!window.confirm(message)) e.preventDefault();

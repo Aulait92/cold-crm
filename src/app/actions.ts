@@ -391,3 +391,27 @@ export async function updateLinkedIn(fd: FormData) {
   }
   refresh(contactId);
 }
+
+// ─── Verlauf bearbeiten ─────────────────────────────────────────────────
+export async function updateActivity(fd: FormData) {
+  await requireAuth();
+  const id = s(fd, "id")!;
+  const day = s(fd, "date");
+  const type = s(fd, "type") as ActivityType | null;
+  const a = await prisma.activity.update({
+    where: { id },
+    data: {
+      outcome: s(fd, "outcome"),
+      note: s(fd, "note"),
+      type: type ?? undefined,
+      occurredAt: day ? fromDayKey(day, s(fd, "time") ?? "09:00") : undefined,
+    },
+  });
+  refresh(a.contactId);
+}
+
+export async function deleteActivity(fd: FormData) {
+  await requireAuth();
+  const a = await prisma.activity.delete({ where: { id: s(fd, "id")! } });
+  refresh(a.contactId);
+}
