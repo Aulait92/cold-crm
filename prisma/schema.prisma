@@ -49,6 +49,7 @@ enum ActivityType {
   STATUS
   COLD_MAIL
   LINKEDIN
+  TERMIN
   IMPORT
 }
 
@@ -121,6 +122,7 @@ model Contact {
   campaigns  CampaignLead[]
   emails     EmailMessage[]
   linkedinEvents LinkedInEvent[]
+  meetings       Meeting[]
 
   @@index([stage])
   @@index([customerStage])
@@ -223,4 +225,33 @@ model LinkedInEvent {
 
   @@index([contactId])
   @@index([createdAt])
+}
+
+// Termine aus Calendly (gebucht über Calendly → Google Calendar)
+model Meeting {
+  id           String    @id @default(cuid())
+  contactId    String
+  contact      Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  calendlyUri  String?   @unique // Invitee-URI
+  eventUri     String?
+  title        String
+  startAt      DateTime
+  endAt        DateTime?
+  location     String?
+  joinUrl      String?
+  status       String    @default("GEPLANT") // GEPLANT, ABGESAGT, VERSCHOBEN
+  cancelReason String?
+  canceledBy   String?
+  rescheduleUrl String?
+  cancelUrl    String?
+  answers      String? // Fragen & Antworten aus dem Buchungsformular
+  utmSource    String?
+  inviteeName  String?
+  inviteeEmail String?
+  taskId       String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([contactId])
+  @@index([startAt])
 }

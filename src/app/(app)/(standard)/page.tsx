@@ -1,14 +1,15 @@
 import { connection } from "next/server";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { STAGES } from "@/lib/crm";
+import { STAGES, shortName } from "@/lib/crm";
+import { fmtDateTime } from "@/lib/dates";
 import { Stat, TaskRow } from "@/components/ui";
 import { dayBounds, openTasks } from "@/lib/queries";
 
 export default async function HeutePage() {
   await connection();
   const { start, tomorrow } = dayBounds();
-  const [tasks, stageCounts, sent, replies, mailNoCall, total, liConnected, liReplies] = await Promise.all([
+  const [tasks, stageCounts, sent, replies, mailNoCall, total, liConnected, liReplies, meetings] = await Promise.all([
     openTasks({ dueAt: { lt: tomorrow } }),
     prisma.contact.groupBy({ by: ["stage"], _count: true }),
     prisma.contact.count({ where: { campaigns: { some: { sentAt: { not: null } } } } }),
@@ -17,6 +18,12 @@ export default async function HeutePage() {
     prisma.contact.count(),
     prisma.contact.count({ where: { linkedinStatus: { in: ["VERNETZT", "NACHRICHT_GESENDET", "GEANTWORTET"] } } }),
     prisma.contact.count({ where: { linkedinStatus: "GEANTWORTET" } }),
+    prisma.meeting.findMany({
+      where: { status: "GEPLANT", startAt: { gte: start } },
+      orderBy: { startAt: "asc" },
+      take: 8,
+      include: { contact: { select: { id: true, name: true, city: true } } },
+    }),
   ]);
   const overdue = tasks.filter((t) => t.dueAt < start).length;
   const count = (id: string) => stageCounts.find((s) => s.stage === id)?._count ?? 0;
@@ -47,6 +54,24 @@ export default async function HeutePage() {
             <p className="px-4 py-8 text-center text-sm text-slate-500">Nichts fällig. 🎉</p>
           )}
         </section>
+        <div className="space-y-6">
+        <section className="card p-4">
+          <h2 className="mb-3 font-medium">Nächste Termine</h2>
+          {meetings.length ? (
+            <ul className="space-y-2 text-sm">
+              {meetings.map((m) => (
+                <li key={m.id}>
+                  <Link href={`/kontakte/${m.contact.id}`} className="block rounded-lg px-2 py-1 hover:bg-slate-50">
+                    <span className="font-medium">{fmtDateTime(m.startAt)}</span> · {shortName(m.contact.name)}
+                    <span className="block text-xs text-slate-500">{m.title}{m.contact.city ? ` · ${m.contact.city}` : ""}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-slate-500">Keine anstehenden Termine.</p>
+          )}
+        </section>
         <section className="card p-4">
           <h2 className="mb-3 font-medium">Pipeline</h2>
           <ul className="space-y-1.5">
@@ -60,6 +85,7 @@ export default async function HeutePage() {
             ))}
           </ul>
         </section>
+        </div>
       </div>
     </div>
   );

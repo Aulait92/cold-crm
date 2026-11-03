@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { createSession, destroySession, requireAuth } from "@/lib/auth";
@@ -9,6 +10,7 @@ import { addDays, fromDayKey } from "@/lib/dates";
 import type { ActivityType, CustomerStage, LossReason, Stage, TaskType } from "@/generated/prisma/enums";
 import { importContactsCsv } from "@/lib/import-contacts";
 import { ensureSource } from "@/lib/source";
+import { connectCalendly, syncCalendly } from "@/lib/calendly";
 import { LI_LABEL, importWaalaxyCsv } from "@/lib/linkedin";
 import { ensureReplyTask, importInstantlyCsv, recordReply, syncInstantly } from "@/lib/instantly";
 
@@ -414,4 +416,33 @@ export async function deleteActivity(fd: FormData) {
   await requireAuth();
   const a = await prisma.activity.delete({ where: { id: s(fd, "id")! } });
   refresh(a.contactId);
+}
+
+// ─── Calendly ───────────────────────────────────────────────────────────
+async function baseUrl() {
+  const h = await headers();
+  return `${h.get("x-forwarded-proto") ?? "https"}://${h.get("x-forwarded-host") ?? h.get("host")}`;
+}
+
+export async function connectCalendlyAction(prev: ImportState): Promise<ImportState> {
+  void prev;
+  await requireAuth();
+  try {
+    const msg = await connectCalendly(`${await baseUrl()}/api/calendly/webhook?token=${process.env.WEBHOOK_TOKEN}`);
+    return { ok: true, message: msg };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function syncCalendlyAction(prev: ImportState): Promise<ImportState> {
+  void prev;
+  await requireAuth();
+  try {
+    const r = await syncCalendly();
+    refresh();
+    return { ok: true, message: `${r.events} Termine geprüft (${r.invitees} Teilnehmer): ${r.new} neu übernommen, ${r.canceled} Absagen/Verschiebungen.` };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
 }

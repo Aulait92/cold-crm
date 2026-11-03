@@ -23,6 +23,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
       tasks: { include: taskInclude, orderBy: [{ doneAt: { sort: "desc", nulls: "first" } }, { dueAt: "asc" }] },
       campaigns: { include: { campaign: true }, orderBy: { sentAt: "desc" } },
       emails: { orderBy: { sentAt: "desc" } },
+      meetings: { orderBy: { startAt: "desc" } },
     },
   });
   if (!c) notFound();
@@ -177,6 +178,35 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
         </div>
 
         <div className="space-y-5">
+          {c.meetings.length > 0 && (
+            <section className="card">
+              <h2 className="border-b border-slate-100 px-4 py-3 font-medium">Termine (Calendly)</h2>
+              <ul className="divide-y divide-slate-100">
+                {c.meetings.map((m) => {
+                  const past = m.startAt < new Date();
+                  return (
+                    <li key={m.id} className="px-4 py-3 text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`badge ${m.status === "GEPLANT" ? (past ? "bg-slate-100 text-slate-600" : "bg-indigo-100 text-indigo-800") : "bg-rose-50 text-rose-700"}`}>
+                          {m.status === "GEPLANT" ? (past ? "Vergangen" : "Geplant") : m.status === "VERSCHOBEN" ? "Verschoben" : "Abgesagt"}
+                        </span>
+                        <span className={`font-medium ${m.status !== "GEPLANT" ? "text-slate-400 line-through" : ""}`}>{fmtDateTime(m.startAt)}</span>
+                        <span className="text-slate-600">{m.title}</span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-500">
+                        {m.inviteeName && <span>{m.inviteeName} ({m.inviteeEmail})</span>}
+                        {m.joinUrl ? <a href={m.joinUrl} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline">Meeting-Link ↗</a> : m.location && <span>{m.location}</span>}
+                        {m.utmSource && <span>Quelle: {m.utmSource}</span>}
+                        {m.cancelReason && <span>Grund: {m.cancelReason}</span>}
+                      </div>
+                      {m.answers && <p className="mt-1 whitespace-pre-wrap text-xs text-slate-500">{m.answers}</p>}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+
           <section className="card">
             <h2 className="border-b border-slate-100 px-4 py-3 font-medium">Aufgaben</h2>
             {open.length > 0 && <ul className="divide-y divide-slate-100">{open.map((t) => <TaskRow key={t.id} t={t} showContact={false} />)}</ul>}

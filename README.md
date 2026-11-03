@@ -14,6 +14,8 @@ Einfaches CRM für die Cold-Akquise der Allianz-Agenturen: Anruf-Pipeline, Aufga
 
 - **LinkedIn (Waalaxy)**: Webhook (`/api/waalaxy/webhook?token=…`, Schritt „CRM Sync“) und CSV-Export. Zuordnung über LinkedIn-URL, E-Mail oder Name (+ Ort). Status: Anfrage gesendet → Vernetzt → Nachricht gesendet → Geantwortet; Antworten erzeugen eine Aufgabe.
 
+- **Calendly**: Webhook `/api/calendly/webhook` (wird per Button „Calendly verbinden“ angelegt, Signatur wird geprüft). Buchungen → Termin am Kontakt, Aufgabe zum Termin, Stufe „Termin“; Absagen/Verschiebungen werden übernommen. Unbekannte Bucher werden als Kontakt angelegt.
+
 ## Lokal starten
 
 ```bash
@@ -25,4 +27,4 @@ npm run dev
 
 ## Deployment (z.B. Railway)
 
-Postgres anlegen, Dockerfile deployen, Variablen setzen: `DATABASE_URL`, `AUTH_SECRET` (`openssl rand -hex 32`), `APP_PASSWORD`, `INSTANTLY_API_KEY`, `WEBHOOK_TOKEN`. Das Schema wird beim Start per `prisma db push` angelegt.
+Postgres anlegen, Dockerfile deployen, Variablen setzen: `DATABASE_URL`, `AUTH_SECRET` (`openssl rand -hex 32`), `APP_PASSWORD`, `INSTANTLY_API_KEY`, `WEBHOOK_TOKEN`, `CALENDLY_TOKEN`. Das Schema wird beim Start per `prisma db push` angelegt.

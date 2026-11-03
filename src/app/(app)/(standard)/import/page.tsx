@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { ContactsImport, InstantlyCsvImport, InstantlySync, WaalaxyCsvImport } from "@/components/import-forms";
+import { CalendlyForms, ContactsImport, InstantlyCsvImport, InstantlySync, WaalaxyCsvImport } from "@/components/import-forms";
 import { fmtDateTime } from "@/lib/dates";
 import { LI_LABEL } from "@/lib/linkedin";
 import Link from "next/link";
@@ -9,11 +9,12 @@ export default async function ImportPage() {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host");
   const proto = h.get("x-forwarded-proto") ?? "https";
-  const [contacts, campaigns, liEvents, liCount] = await Promise.all([
+  const [contacts, campaigns, liEvents, liCount, meetingCount] = await Promise.all([
     prisma.contact.count(),
     prisma.campaign.findMany({ include: { _count: { select: { leads: true } } }, orderBy: { createdAt: "desc" } }),
     prisma.linkedInEvent.findMany({ orderBy: { createdAt: "desc" }, take: 15, include: { contact: { select: { id: true, name: true } } } }),
     prisma.contact.count({ where: { linkedinStatus: { not: null } } }),
+    prisma.meeting.count(),
   ]);
 
   return (
@@ -102,6 +103,22 @@ export default async function ImportPage() {
             </ul>
           </div>
         )}
+      </section>
+
+      <section className="card space-y-3 p-5 text-sm">
+        <h2 className="font-medium">5. Termine aus Calendly</h2>
+        <p className="text-slate-600">
+          Jede Buchung über Calendly landet am Kontakt: Termin mit Datum, Ort/Link und Antworten aus dem Buchungsformular,
+          Aufgabe zum Termin, Stufe „Termin“ in der Pipeline. Absagen und Verschiebungen werden ebenfalls übernommen.
+          Zuordnung über E-Mail oder Name – unbekannte Bucher werden als neuer Kontakt angelegt.
+          Aktuell {meetingCount.toLocaleString("de-DE")} Termine im CRM.
+        </p>
+        <ol className="list-decimal space-y-1 pl-5 text-slate-600">
+          <li>In Calendly unter <b>Integrationen → API &amp; Webhooks</b> einen <b>Personal Access Token</b> erzeugen.</li>
+          <li>In Railway beim Service <code>cold-crm</code> die Variable <code>CALENDLY_TOKEN</code> mit diesem Token anlegen.</li>
+          <li>Hier „Calendly verbinden“ klicken (legt den Webhook automatisch an, benötigt Calendly Standard oder höher), danach einmal „Bestehende Termine abgleichen“.</li>
+        </ol>
+        <CalendlyForms hasToken={!!process.env.CALENDLY_TOKEN} />
       </section>
 
       {campaigns.length > 0 && (

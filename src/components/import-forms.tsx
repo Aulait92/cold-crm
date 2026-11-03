@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { importContactsAction, importInstantlyAction, importWaalaxyAction, syncInstantlyAction, type ImportState } from "@/app/actions";
+import { connectCalendlyAction, importContactsAction, importInstantlyAction, importWaalaxyAction, syncCalendlyAction, syncInstantlyAction, type ImportState } from "@/app/actions";
 
 function Result({ state }: { state: ImportState }) {
   if (!state) return null;
@@ -50,5 +50,25 @@ export function WaalaxyCsvImport() {
       <button className="btn-primary" disabled={pending}>{pending ? "Importiere …" : "Waalaxy-CSV importieren"}</button>
       <Result state={state} />
     </form>
+  );
+}
+
+export function CalendlyForms({ hasToken }: { hasToken: boolean }) {
+  const [cState, connect, cPending] = useActionState(connectCalendlyAction, null);
+  const [sState, sync, sPending] = useActionState(syncCalendlyAction, null);
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <form action={connect}>
+          <button className="btn-primary" disabled={cPending || !hasToken}>{cPending ? "Verbinde …" : "1. Calendly verbinden"}</button>
+        </form>
+        <form action={sync}>
+          <button className="btn-ghost" disabled={sPending || !hasToken}>{sPending ? "Gleiche ab …" : "2. Bestehende Termine abgleichen"}</button>
+        </form>
+      </div>
+      {!hasToken && <p className="text-sm text-amber-700">CALENDLY_TOKEN ist nicht gesetzt.</p>}
+      <Result state={cState} />
+      <Result state={sState} />
+    </div>
   );
 }

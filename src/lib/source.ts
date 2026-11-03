@@ -15,9 +15,13 @@ export async function guessSource(contactId: string): Promise<{ source: string; 
       linkedinList: true,
       emails: { where: { direction: "IN", isAutoReply: false }, orderBy: { sentAt: "asc" }, take: 1, select: { sentAt: true, campaign: true } },
       campaigns: { where: { replyCount: { gt: 0 } }, take: 1, select: { campaign: { select: { name: true } } } },
+      meetings: { where: { utmSource: { not: null } }, orderBy: { createdAt: "asc" }, take: 1, select: { utmSource: true, title: true } },
     },
   });
   if (!c) return null;
+  // Termin über einen Meta-Ads-Link gebucht (utm_source)
+  const utm = c.meetings[0]?.utmSource;
+  if (utm && /facebook|^fb|instagram|^ig|meta/i.test(utm)) return { source: "META_ADS", note: `Calendly-Buchung (utm_source: ${utm})` };
   const mail = c.emails[0];
   const mailAt = mail?.sentAt ?? (c.campaigns.length ? new Date(8.64e15) : null);
   const liAt = c.linkedinReplyAt;
