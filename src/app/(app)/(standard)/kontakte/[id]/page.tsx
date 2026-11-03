@@ -6,6 +6,7 @@ import { dayKey, fmtDate, fmtDateTime, todayKey } from "@/lib/dates";
 import { stripQuoted } from "@/lib/instantly";
 import { StageBadge, TaskRow } from "@/components/ui";
 import { ActivityForm } from "@/components/activity-form";
+import { Collapsible } from "@/components/collapsible";
 import { TaskForm } from "@/components/task-form";
 import { addReplyManually, deleteContact, setReplySentiment, setStage, updateCustomer, updateLinkedIn } from "@/app/actions";
 import { LI_COLOR, LI_LABEL, LI_STATUSES } from "@/lib/linkedin";
@@ -71,10 +72,10 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
             <ActivityForm contactId={c.id} hasOpenTasks={open.length > 0} />
           </section>
 
-          <section className="card">
-            <h2 className="border-b border-slate-100 px-4 py-3 font-medium">
-              Antworten auf Cold Mails <span className="font-normal text-slate-400">({c.emails.length})</span>
-            </h2>
+          <Collapsible
+            id="antworten"
+            title={<>Antworten auf Cold Mails <span className="font-normal text-slate-400">({c.emails.length})</span></>}
+          >
             {c.emails.length > 0 && (
               <ol className="divide-y divide-slate-100">
                 {c.emails.map((e) => {
@@ -134,10 +135,9 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
                 <button className="btn-ghost">Antwort speichern</button>
               </form>
             </details>
-          </section>
+          </Collapsible>
 
-          <section className="card">
-            <h2 className="border-b border-slate-100 px-4 py-3 font-medium">Verlauf</h2>
+          <Collapsible id="verlauf" title={<>Verlauf <span className="font-normal text-slate-400">({c.activities.length})</span></>}>
             <ol className="divide-y divide-slate-100">
               {c.activities.map((a) => (
                 <li key={a.id} className="px-4 py-3 text-sm">
@@ -151,7 +151,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
               ))}
               {!c.activities.length && <li className="px-4 py-6 text-center text-sm text-slate-500">Noch keine Aktivitäten.</li>}
             </ol>
-          </section>
+          </Collapsible>
         </div>
 
         <div className="space-y-5">
