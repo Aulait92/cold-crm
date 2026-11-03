@@ -17,10 +17,10 @@ export const LI_COLOR = Object.fromEntries(LI_STATUSES.map((s) => [s.id, s.color
 const RANK: Record<string, number> = { ANFRAGE_GESENDET: 1, VERNETZT: 2, NACHRICHT_GESENDET: 3, GEANTWORTET: 4 };
 
 // ─── Feld-Erkennung ─────────────────────────────────────────────────────
-const norm = (k: string) => k.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+export const norm = (k: string) => k.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
 
 /** Verschachteltes Objekt flach machen: { prospect: { firstName } } → { firstname: … } (letztes Segment zählt) */
-function flatten(obj: unknown, out: Record<string, unknown> = {}, prefix = ""): Record<string, unknown> {
+export function flatten(obj: unknown, out: Record<string, unknown> = {}, prefix = ""): Record<string, unknown> {
   if (obj && typeof obj === "object" && !Array.isArray(obj)) {
     for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
       if (v && typeof v === "object" && !Array.isArray(v)) flatten(v, out, prefix + k + ".");

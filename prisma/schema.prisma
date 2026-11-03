@@ -123,6 +123,7 @@ model Contact {
   emails     EmailMessage[]
   linkedinEvents LinkedInEvent[]
   meetings       Meeting[]
+  inboundLeads   InboundLead[]
 
   @@index([stage])
   @@index([customerStage])
@@ -254,4 +255,25 @@ model Meeting {
 
   @@index([contactId])
   @@index([startAt])
+}
+
+// Eingehende Leads (Meta Lead Ads über Zapier/Make, Landingpage-Formulare …)
+model InboundLead {
+  id        String   @id @default(cuid())
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  source    String // META_ADS, INBOUND, …
+  name      String?
+  email     String?
+  phone     String?
+  campaign  String?
+  ad        String?
+  form      String?
+  answers   String?
+  created   Boolean  @default(false) // neuer Kontakt angelegt?
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([contactId])
 }

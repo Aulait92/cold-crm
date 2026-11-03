@@ -16,6 +16,8 @@ Einfaches CRM für die Cold-Akquise der Allianz-Agenturen: Anruf-Pipeline, Aufga
 
 - **Calendly**: Webhook `/api/calendly/webhook` (wird per Button „Calendly verbinden“ angelegt, Signatur wird geprüft). Buchungen → Termin am Kontakt, Aufgabe zum Termin, Stufe „Termin“; Absagen/Verschiebungen werden übernommen. Unbekannte Bucher werden als Kontakt angelegt.
 
+- **Meta Ads / Inbound-Leads**: Webhook `/api/leads/webhook?token=…` (Meta Lead Ads über Zapier/Make, Landingpage-Formulare, `&source=INBOUND` für Website). Lead → Kontakt (zugeordnet oder neu), Stufe „Interesse“, Kanal „Meta Ads“, Aufgabe „Lead anrufen“.
+
 ## Lokal starten
 
 ```bash

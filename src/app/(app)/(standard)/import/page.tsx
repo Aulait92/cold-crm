@@ -9,12 +9,13 @@ export default async function ImportPage() {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host");
   const proto = h.get("x-forwarded-proto") ?? "https";
-  const [contacts, campaigns, liEvents, liCount, meetingCount] = await Promise.all([
+  const [contacts, campaigns, liEvents, liCount, meetingCount, leads] = await Promise.all([
     prisma.contact.count(),
     prisma.campaign.findMany({ include: { _count: { select: { leads: true } } }, orderBy: { createdAt: "desc" } }),
     prisma.linkedInEvent.findMany({ orderBy: { createdAt: "desc" }, take: 15, include: { contact: { select: { id: true, name: true } } } }),
     prisma.contact.count({ where: { linkedinStatus: { not: null } } }),
     prisma.meeting.count(),
+    prisma.inboundLead.findMany({ orderBy: { createdAt: "desc" }, take: 15, include: { contact: { select: { id: true } } } }),
   ]);
 
   return (
@@ -119,6 +120,41 @@ export default async function ImportPage() {
           <li>Hier „Calendly verbinden“ klicken (legt den Webhook automatisch an, benötigt Calendly Standard oder höher), danach einmal „Bestehende Termine abgleichen“.</li>
         </ol>
         <CalendlyForms hasToken={!!process.env.CALENDLY_TOKEN} />
+      </section>
+
+      <section className="card space-y-3 p-5 text-sm">
+        <h2 className="font-medium">6. Leads aus Meta Ads (und Website-Formularen)</h2>
+        <p className="text-slate-600">
+          Jeder Lead wird einem bestehenden Kontakt zugeordnet (E-Mail oder Name) oder neu angelegt – mit Stufe „Interesse“,
+          Kanal „Meta Ads“, allen Formularantworten im Verlauf und der Aufgabe „Neuen Lead anrufen“.
+        </p>
+        <div>
+          <h3 className="mb-1 font-medium text-slate-700">Webhook-URL</h3>
+          <code className="block overflow-x-auto rounded-lg bg-slate-100 p-2 text-xs">
+            {proto}://{host}/api/leads/webhook?token={process.env.WEBHOOK_TOKEN ? "<WEBHOOK_TOKEN>" : "(WEBHOOK_TOKEN setzen)"}
+          </code>
+          <p className="mt-1 text-xs text-slate-500">Für Website-/Landingpage-Formulare ohne Meta-Bezug <code>&amp;source=INBOUND</code> anhängen.</p>
+        </div>
+        <ul className="list-disc space-y-1 pl-5 text-slate-600">
+          <li><b>Meta Lead-Formular (Instant Form):</b> In Zapier „Facebook Lead Ads → New Lead“ als Auslöser, als Aktion „Webhooks by Zapier → POST“ mit obiger URL (Payload: JSON, alle Felder). In Make analog mit „Facebook Lead Ads → Watch Leads“ + „HTTP → Make a request“.</li>
+          <li><b>Landingpage (z.B. Perspective, Typeform, Webflow):</b> In den Formular-Einstellungen einen Webhook mit obiger URL eintragen.</li>
+        </ul>
+        {leads.length > 0 && (
+          <div>
+            <h3 className="mb-1 font-medium text-slate-700">Zuletzt eingegangen</h3>
+            <ul className="divide-y divide-slate-100">
+              {leads.map((l) => (
+                <li key={l.id} className="flex flex-wrap items-center gap-2 py-1.5">
+                  <span className="text-xs text-slate-400">{fmtDateTime(l.createdAt)}</span>
+                  <span>{l.name ?? l.email ?? "?"}</span>
+                  {l.campaign && <span className="text-xs text-slate-500">{l.campaign}</span>}
+                  <span className={`badge ${l.created ? "bg-emerald-50 text-emerald-700" : "bg-sky-50 text-sky-700"}`}>{l.created ? "neuer Kontakt" : "bestehender Kontakt"}</span>
+                  {l.contact && <Link href={`/kontakte/${l.contact.id}`} className="ml-auto text-xs text-sky-700 hover:underline">→ Kontakt</Link>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
 
       {campaigns.length > 0 && (

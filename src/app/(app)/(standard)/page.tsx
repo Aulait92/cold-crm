@@ -2,14 +2,14 @@ import { connection } from "next/server";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { STAGES, shortName } from "@/lib/crm";
-import { fmtDateTime } from "@/lib/dates";
+import { addDays, fmtDateTime } from "@/lib/dates";
 import { Stat, TaskRow } from "@/components/ui";
 import { dayBounds, openTasks } from "@/lib/queries";
 
 export default async function HeutePage() {
   await connection();
   const { start, tomorrow } = dayBounds();
-  const [tasks, stageCounts, sent, replies, mailNoCall, total, liConnected, liReplies, meetings] = await Promise.all([
+  const [tasks, stageCounts, sent, replies, mailNoCall, total, liConnected, liReplies, meetings, leads] = await Promise.all([
     openTasks({ dueAt: { lt: tomorrow } }),
     prisma.contact.groupBy({ by: ["stage"], _count: true }),
     prisma.contact.count({ where: { campaigns: { some: { sentAt: { not: null } } } } }),
@@ -21,6 +21,12 @@ export default async function HeutePage() {
     prisma.meeting.findMany({
       where: { status: "GEPLANT", startAt: { gte: start } },
       orderBy: { startAt: "asc" },
+      take: 8,
+      include: { contact: { select: { id: true, name: true, city: true } } },
+    }),
+    prisma.inboundLead.findMany({
+      where: { createdAt: { gte: addDays(start, -7) } },
+      orderBy: { createdAt: "desc" },
       take: 8,
       include: { contact: { select: { id: true, name: true, city: true } } },
     }),
@@ -72,6 +78,23 @@ export default async function HeutePage() {
             <p className="text-sm text-slate-500">Keine anstehenden Termine.</p>
           )}
         </section>
+        {leads.length > 0 && (
+          <section className="card p-4">
+            <h2 className="mb-3 font-medium">Neue Leads (7 Tage)</h2>
+            <ul className="space-y-2 text-sm">
+              {leads.map((l) => (
+                <li key={l.id}>
+                  <Link href={l.contact ? `/kontakte/${l.contact.id}` : "/import"} className="block rounded-lg px-2 py-1 hover:bg-slate-50">
+                    <span className="font-medium">{l.contact ? shortName(l.contact.name) : l.name ?? l.email}</span>
+                    <span className="block text-xs text-slate-500">
+                      {fmtDateTime(l.createdAt)} · {l.source === "META_ADS" ? "Meta Ads" : "Website"}{l.campaign ? ` · ${l.campaign}` : ""}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         <section className="card p-4">
           <h2 className="mb-3 font-medium">Pipeline</h2>
           <ul className="space-y-1.5">
