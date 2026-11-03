@@ -110,7 +110,7 @@ model Contact {
   monthlyValue  Int? // € pro Monat
   contractStart DateTime?
   customerSince DateTime?
-  customerSource     String? // Akquise-Kanal: COLD_CALL, COLD_MAIL, LINKEDIN, EMPFEHLUNG, INBOUND, NETZWERK, SONSTIGES
+  customerSource     String? // Akquise-Kanal: COLD_CALL, COLD_MAIL, LINKEDIN, META_ADS, EMPFEHLUNG, INBOUND, NETZWERK, SONSTIGES
   customerSourceNote String? // z.B. "Kampagne Allianz Okt" oder "Empfehlung von Hr. Müller"
 
   createdAt DateTime @default(now())

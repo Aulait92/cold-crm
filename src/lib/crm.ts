@@ -104,6 +104,7 @@ export const SOURCES = [
   { id: "COLD_CALL", label: "Cold Call", color: "bg-amber-50 text-amber-800" },
   { id: "COLD_MAIL", label: "Cold Mail", color: "bg-sky-50 text-sky-800" },
   { id: "LINKEDIN", label: "LinkedIn", color: "bg-indigo-50 text-indigo-800" },
+  { id: "META_ADS", label: "Meta Ads", color: "bg-blue-50 text-blue-800" },
   { id: "EMPFEHLUNG", label: "Empfehlung", color: "bg-emerald-50 text-emerald-800" },
   { id: "INBOUND", label: "Inbound / Website", color: "bg-violet-50 text-violet-800" },
   { id: "NETZWERK", label: "Netzwerk / Event", color: "bg-teal-50 text-teal-800" },
