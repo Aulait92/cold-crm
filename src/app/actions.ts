@@ -8,6 +8,7 @@ import { CUSTOMER_LABEL, CUSTOMER_STAGES, OUTCOME_BY_ID, STAGE_RANK, STAGE_LABEL
 import { addDays, fromDayKey } from "@/lib/dates";
 import type { ActivityType, CustomerStage, LossReason, Stage, TaskType } from "@/generated/prisma/enums";
 import { importContactsCsv } from "@/lib/import-contacts";
+import { ensureSource } from "@/lib/source";
 import { LI_LABEL, importWaalaxyCsv } from "@/lib/linkedin";
 import { ensureReplyTask, importInstantlyCsv, recordReply, syncInstantly } from "@/lib/instantly";
 
@@ -81,6 +82,7 @@ export async function logActivity(fd: FormData) {
       });
     }
   });
+  if (stage === "GEWONNEN") await ensureSource(contactId);
   refresh(contactId);
 }
 
@@ -105,6 +107,7 @@ export async function setStage(fd: FormData) {
       data: { contactId, type: "STATUS", outcome: `${STAGE_LABEL[before.stage]} → ${STAGE_LABEL[stage]}` },
     });
   }
+  if (stage === "GEWONNEN") await ensureSource(contactId);
   refresh(contactId);
 }
 
@@ -246,6 +249,7 @@ async function changeCustomerStage(contactId: string, next: CustomerStage) {
       outcome: `Kunde: ${c.customerStage ? CUSTOMER_LABEL[c.customerStage] : "–"} → ${CUSTOMER_LABEL[next]}`,
     },
   });
+  await ensureSource(contactId);
 }
 
 export async function updateCustomer(fd: FormData) {
@@ -258,6 +262,8 @@ export async function updateCustomer(fd: FormData) {
     where: { id: contactId },
     data: {
       products: s(fd, "products"),
+      customerSource: s(fd, "customerSource"),
+      customerSourceNote: s(fd, "customerSourceNote"),
       monthlyValue: value ? Math.round(Number(value.replace(",", "."))) || null : null,
       contractStart: start ? fromDayKey(start) : null,
     },
@@ -319,6 +325,7 @@ export async function dragStage(contactId: string, stage: string, lossReason?: s
   if (to === "VERLOREN" || to === "UNGUELTIG") {
     await prisma.task.updateMany({ where: { contactId, doneAt: null }, data: { doneAt: new Date() } });
   }
+  if (to === "GEWONNEN") await ensureSource(contactId);
   refresh(contactId);
 }
 

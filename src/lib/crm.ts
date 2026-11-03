@@ -98,3 +98,16 @@ export const CUSTOMER_STAGES: { id: CustomerStage; label: string; color: string;
 ];
 export const CUSTOMER_LABEL = Object.fromEntries(CUSTOMER_STAGES.map((s) => [s.id, s.label])) as Record<CustomerStage, string>;
 export const CUSTOMER_COLOR = Object.fromEntries(CUSTOMER_STAGES.map((s) => [s.id, s.color])) as Record<CustomerStage, string>;
+
+// ─── Akquise-Kanal (woher kommt der Kunde) ──────────────────────────────
+export const SOURCES = [
+  { id: "COLD_CALL", label: "Cold Call", color: "bg-amber-50 text-amber-800" },
+  { id: "COLD_MAIL", label: "Cold Mail", color: "bg-sky-50 text-sky-800" },
+  { id: "LINKEDIN", label: "LinkedIn", color: "bg-indigo-50 text-indigo-800" },
+  { id: "EMPFEHLUNG", label: "Empfehlung", color: "bg-emerald-50 text-emerald-800" },
+  { id: "INBOUND", label: "Inbound / Website", color: "bg-violet-50 text-violet-800" },
+  { id: "NETZWERK", label: "Netzwerk / Event", color: "bg-teal-50 text-teal-800" },
+  { id: "SONSTIGES", label: "Sonstiges", color: "bg-slate-100 text-slate-700" },
+] as const;
+export const SOURCE_LABEL = Object.fromEntries(SOURCES.map((s) => [s.id, s.label])) as Record<string, string>;
+export const SOURCE_COLOR = Object.fromEntries(SOURCES.map((s) => [s.id, s.color])) as Record<string, string>;

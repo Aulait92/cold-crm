@@ -2,7 +2,8 @@ import Link from "next/link";
 import clsx from "clsx";
 import { connection } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { CUSTOMER_STAGES, shortName } from "@/lib/crm";
+import { CUSTOMER_STAGES, SOURCES, SOURCE_COLOR, SOURCE_LABEL, shortName } from "@/lib/crm";
+import { ensureSource } from "@/lib/source";
 import { dayKey, fmtDate, relDay, todayKey } from "@/lib/dates";
 import { dragCustomer, moveCustomer } from "@/app/actions";
 import { Kanban, type KanbanCard, type KanbanColumn } from "@/components/kanban";
@@ -14,11 +15,15 @@ export default async function KundenPage() {
   await connection();
   // Bereits gewonnene Kontakte (z.B. aus dem Listen-Import) in die Kunden-Pipeline übernehmen
   await prisma.contact.updateMany({ where: { stage: "GEWONNEN", customerStage: null }, data: { customerStage: "VERTRAG" } });
+  // Kanal für bestehende Kunden ohne Angabe vorschlagen
+  for (const { id } of await prisma.contact.findMany({ where: { customerStage: { not: null }, customerSource: null }, select: { id: true } })) {
+    await ensureSource(id);
+  }
   const customers = await prisma.contact.findMany({
     where: { customerStage: { not: null } },
     orderBy: { updatedAt: "desc" },
     select: {
-      id: true, name: true, city: true, phone: true, customerStage: true, products: true, monthlyValue: true, contractStart: true, customerSince: true,
+      id: true, name: true, city: true, phone: true, customerStage: true, customerSource: true, products: true, monthlyValue: true, contractStart: true, customerSince: true,
       tasks: { where: { doneAt: null }, orderBy: { dueAt: "asc" }, take: 1, select: { title: true, dueAt: true } },
     },
   });
@@ -38,6 +43,7 @@ export default async function KundenPage() {
           <Link href={`/kontakte/${c.id}`} draggable={false} className="block text-sm font-medium leading-tight hover:underline">{shortName(c.name)}</Link>
           <div className="mt-0.5 text-xs text-slate-500">{c.city}</div>
           <div className="mt-2 flex flex-wrap gap-1">
+            {c.customerSource && <span className={`badge ${SOURCE_COLOR[c.customerSource]}`}>über {SOURCE_LABEL[c.customerSource]}</span>}
             {c.monthlyValue != null && <span className="badge bg-emerald-50 text-emerald-700">{eur(c.monthlyValue)}/Monat</span>}
             {c.products?.split(",").map((p) => p.trim()).filter(Boolean).map((p) => (
               <span key={p} className="badge bg-slate-100 text-slate-600">{p}</span>
@@ -89,7 +95,25 @@ export default async function KundenPage() {
         <Stat label="Potenzial in Vorbereitung" value={eur(sum(["VERTRAG", "ONBOARDING", "TEST"]))} />
       </div>
 
-      <Kanban columns={columns} cards={cards} move={dragCustomer} showValue topOffset={290} />
+      {customers.length > 0 && (
+        <div className="card flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 text-sm">
+          <span className="text-xs font-medium text-slate-500">Kunden nach Kanal (ohne Gekündigt):</span>
+          {[...SOURCES.map((x) => x.id), null].map((src) => {
+            const list = customers.filter((c) => (c.customerSource ?? null) === src && c.customerStage !== "GEKUENDIGT");
+            if (!list.length) return null;
+            const mrr = list.filter((c) => c.customerStage === "AKTIV").reduce((a, c) => a + (c.monthlyValue ?? 0), 0);
+            return (
+              <span key={src ?? "none"} className="flex items-center gap-1.5">
+                <span className={`badge ${src ? SOURCE_COLOR[src] : "bg-slate-100 text-slate-500"}`}>{src ? SOURCE_LABEL[src] : "Unbekannt"}</span>
+                <span className="tabular-nums">{list.length}</span>
+                {mrr > 0 && <span className="text-xs text-slate-500">· {eur(mrr)}/M aktiv</span>}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      <Kanban columns={columns} cards={cards} move={dragCustomer} showValue topOffset={350} />
       <p className="text-sm text-slate-500">
         Kontakte landen hier automatisch, sobald sie in der Akquise auf „Gewonnen“ gesetzt werden. Produkte, Monatswert und Vertragsstart pflegst du auf der Kontaktseite.
       </p>

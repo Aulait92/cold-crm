@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { ACTIVITY_LABEL, CUSTOMER_COLOR, CUSTOMER_LABEL, CUSTOMER_STAGES, LOSS_LABEL, LOSS_REASONS, STAGES, shortName } from "@/lib/crm";
+import { ACTIVITY_LABEL, CUSTOMER_COLOR, CUSTOMER_LABEL, CUSTOMER_STAGES, SOURCES, SOURCE_COLOR, SOURCE_LABEL, LOSS_LABEL, LOSS_REASONS, STAGES, shortName } from "@/lib/crm";
 import { dayKey, fmtDate, fmtDateTime, todayKey } from "@/lib/dates";
 import { stripQuoted } from "@/lib/instantly";
 import { StageBadge, TaskRow } from "@/components/ui";
@@ -12,6 +12,7 @@ import { addReplyManually, deleteContact, setReplySentiment, setStage, updateCus
 import { LI_COLOR, LI_LABEL, LI_STATUSES } from "@/lib/linkedin";
 import { ConfirmButton } from "@/components/confirm-button";
 import { taskInclude } from "@/lib/queries";
+import { guessSource } from "@/lib/source";
 
 export default async function ContactPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -26,6 +27,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
   });
   if (!c) notFound();
   const open = c.tasks.filter((t) => !t.doneAt);
+  const suggested = c.customerSource ? null : await guessSource(c.id);
   const done = c.tasks.filter((t) => t.doneAt).slice(0, 10);
 
   return (
@@ -43,6 +45,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
             <StageBadge stage={c.stage} />
             {c.customerStage && <span className={`badge ${CUSTOMER_COLOR[c.customerStage]}`}>Kunde: {CUSTOMER_LABEL[c.customerStage]}</span>}
+            {c.customerSource && <span className={`badge ${SOURCE_COLOR[c.customerSource]}`}>über {SOURCE_LABEL[c.customerSource]}</span>}
             {c.lossReason && <span className="badge bg-rose-50 text-rose-700">{LOSS_LABEL[c.lossReason]}</span>}
             {c.competitor && <span className="badge bg-slate-100 text-slate-600">{c.competitor}</span>}
             <span>{c.street}, {c.zip} {c.city}</span>
@@ -222,7 +225,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
 
           <section className="card p-4">
             <h2 className="mb-3 font-medium">Kunde</h2>
-            <form key={`${c.customerStage}-${c.monthlyValue}-${c.products}`} action={updateCustomer} className="grid gap-2 sm:grid-cols-2">
+            <form key={`${c.customerStage}-${c.monthlyValue}-${c.products}-${c.customerSource}-${c.customerSourceNote}`} action={updateCustomer} className="grid gap-2 sm:grid-cols-2">
               <input type="hidden" name="contactId" value={c.id} />
               <div>
                 <label className="label">Kunden-Stufe</label>
@@ -242,6 +245,17 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
               <div>
                 <label className="label">Vertragsstart</label>
                 <input name="contractStart" type="date" defaultValue={c.contractStart ? dayKey(c.contractStart) : ""} className="input" />
+              </div>
+              <div>
+                <label className="label">Gewonnen über{suggested && !c.customerSource ? " (Vorschlag)" : ""}</label>
+                <select name="customerSource" defaultValue={c.customerSource ?? suggested?.source ?? ""} className="input">
+                  <option value="">– bitte wählen –</option>
+                  {SOURCES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Details zur Herkunft</label>
+                <input name="customerSourceNote" defaultValue={c.customerSourceNote ?? suggested?.note ?? ""} placeholder="z.B. Empfehlung von Hr. Müller" className="input" />
               </div>
               <button className="btn-ghost sm:col-span-2">{c.customerStage ? "Speichern" : "Als Kunde speichern"}</button>
             </form>
