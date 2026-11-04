@@ -5,12 +5,13 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { createSession, destroySession, requireAuth } from "@/lib/auth";
-import { CUSTOMER_LABEL, CUSTOMER_STAGES, OUTCOME_BY_ID, STAGE_RANK, STAGE_LABEL } from "@/lib/crm";
+import { CUSTOMER_LABEL, CUSTOMER_STAGES, OUTCOME_BY_ID, SOURCE_LABEL, STAGE_RANK, STAGE_LABEL } from "@/lib/crm";
 import { addDays, fromDayKey } from "@/lib/dates";
 import type { ActivityType, CustomerStage, LossReason, Stage, TaskType } from "@/generated/prisma/enums";
 import { importContactsCsv } from "@/lib/import-contacts";
 import { ensureSource } from "@/lib/source";
 import { connectCalendly, syncCalendly } from "@/lib/calendly";
+import { handleInboundLead } from "@/lib/inbound";
 import { LI_LABEL, importWaalaxyCsv } from "@/lib/linkedin";
 import { ensureReplyTask, importInstantlyCsv, recordReply, syncInstantly } from "@/lib/instantly";
 
@@ -445,4 +446,47 @@ export async function syncCalendlyAction(prev: ImportState): Promise<ImportState
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
+}
+
+// ─── Lead manuell erfassen (z.B. LinkedIn-Nachricht, Empfehlung) ─────────
+export async function createLeadManually(fd: FormData) {
+  await requireAuth();
+  const source = s(fd, "source") ?? "LINKEDIN";
+  const r = await handleInboundLead(
+    {
+      first_name: s(fd, "firstName"),
+      last_name: s(fd, "lastName"),
+      agentur: s(fd, "company"),
+      email: s(fd, "email"),
+      phone: s(fd, "phone"),
+      city: s(fd, "city"),
+      linkedin_url: s(fd, "linkedinUrl"),
+      message: s(fd, "message"),
+    },
+    source,
+    { activity: `Lead manuell erfasst (${SOURCE_LABEL[source] ?? source})`, taskTitle: s(fd, "taskTitle") ?? "Lead kontaktieren" },
+  );
+  refresh();
+  if ("contactId" in r && r.contactId) redirect(`/kontakte/${r.contactId}`);
+  redirect("/kontakte/neu?fehler=1");
+}
+
+/** Protokollierte LinkedIn-Nachricht ohne erkanntes Interesse doch als Lead übernehmen */
+export async function convertInboundLead(fd: FormData) {
+  await requireAuth();
+  const id = s(fd, "id")!;
+  const lead = await prisma.inboundLead.findUniqueOrThrow({ where: { id } });
+  const [first, ...rest] = (lead.name ?? "").split(/\s+/);
+  const url = lead.answers?.match(/https:\/\/www\.linkedin\.com\/in\/\S+/)?.[0] ?? null;
+  const r = await handleInboundLead(
+    { first_name: first || null, last_name: rest.join(" ") || null, linkedin_url: url, message: lead.answers },
+    lead.source,
+    { activity: "LinkedIn-Nachricht als Lead übernommen", taskTitle: "Auf LinkedIn-Anfrage reagieren" },
+  );
+  if ("contactId" in r && r.contactId) {
+    await prisma.inboundLead.update({ where: { id }, data: { contactId: r.contactId } });
+    refresh();
+    redirect(`/kontakte/${r.contactId}`);
+  }
+  refresh();
 }

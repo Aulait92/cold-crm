@@ -1,7 +1,7 @@
 import { jwtVerify } from "jose";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC = ["/login", "/api/instantly/webhook", "/api/waalaxy/webhook", "/api/calendly/webhook", "/api/leads/webhook", "/favicon.ico"];
+const PUBLIC = ["/login", "/api/instantly/webhook", "/api/waalaxy/webhook", "/api/calendly/webhook", "/api/leads/webhook", "/api/linkedin/message", "/favicon.ico"];
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;

@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { CalendlyForms, ContactsImport, InstantlyCsvImport, InstantlySync, WaalaxyCsvImport } from "@/components/import-forms";
 import { fmtDateTime } from "@/lib/dates";
+import { convertInboundLead } from "@/app/actions";
 import { LI_LABEL } from "@/lib/linkedin";
 import Link from "next/link";
 
@@ -9,13 +10,14 @@ export default async function ImportPage() {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host");
   const proto = h.get("x-forwarded-proto") ?? "https";
-  const [contacts, campaigns, liEvents, liCount, meetingCount, leads] = await Promise.all([
+  const [contacts, campaigns, liEvents, liCount, meetingCount, leads, liMessages] = await Promise.all([
     prisma.contact.count(),
     prisma.campaign.findMany({ include: { _count: { select: { leads: true } } }, orderBy: { createdAt: "desc" } }),
     prisma.linkedInEvent.findMany({ orderBy: { createdAt: "desc" }, take: 15, include: { contact: { select: { id: true, name: true } } } }),
     prisma.contact.count({ where: { linkedinStatus: { not: null } } }),
     prisma.meeting.count(),
-    prisma.inboundLead.findMany({ orderBy: { createdAt: "desc" }, take: 15, include: { contact: { select: { id: true } } } }),
+    prisma.inboundLead.findMany({ where: { source: { not: "LINKEDIN" } }, orderBy: { createdAt: "desc" }, take: 15, include: { contact: { select: { id: true } } } }),
+    prisma.inboundLead.findMany({ where: { source: "LINKEDIN" }, orderBy: { createdAt: "desc" }, take: 15, include: { contact: { select: { id: true } } } }),
   ]);
 
   return (
@@ -154,6 +156,48 @@ export default async function ImportPage() {
               ))}
             </ul>
           </div>
+        )}
+      </section>
+
+      <section className="card space-y-3 p-5 text-sm">
+        <h2 className="font-medium">7. LinkedIn-Nachrichten (Interesse an Video / Dienstleistung)</h2>
+        <p className="text-slate-600">
+          LinkedIn hat keine API für Direktnachrichten. Lösung: LinkedIn schickt bei jeder neuen Nachricht eine E-Mail –
+          Zapier leitet diese an das CRM weiter. Das CRM liest Absender, Profil-Link und Nachricht aus und erkennt Interesse
+          (z.B. „Video“, „Dienstleistung“, „mehr erfahren“, „Termin“). Bei Interesse: Lead anlegen bzw. Kontakt ergänzen,
+          Stufe „Interesse“, Kanal LinkedIn, Aufgabe „Auf LinkedIn-Anfrage reagieren“. Ohne erkanntes Interesse wird die
+          Nachricht nur protokolliert und kann unten per Klick übernommen werden.
+        </p>
+        <code className="block overflow-x-auto rounded-lg bg-slate-100 p-2 text-xs">
+          {proto}://{host}/api/linkedin/message?token={process.env.WEBHOOK_TOKEN ? "<WEBHOOK_TOKEN>" : "(WEBHOOK_TOKEN setzen)"}
+        </code>
+        <ol className="list-decimal space-y-1 pl-5 text-slate-600">
+          <li>In LinkedIn unter Einstellungen → Benachrichtigungen → Nachrichten die E-Mail-Benachrichtigung aktivieren.</li>
+          <li>Zapier: Auslöser <b>Gmail → New Email Matching Search</b> mit Suche <code>from:messages-noreply@linkedin.com</code>.</li>
+          <li>Aktion <b>Webhooks by Zapier → POST</b> an obige URL, Payload JSON, Data: <code>subject</code> = Subject, <code>from_name</code> = From Name, <code>body_plain</code> = Body Plain.</li>
+        </ol>
+        <p className="text-slate-600">Oder per Hand: <Link href="/kontakte/neu" className="text-sky-700 hover:underline">+ Neuer Lead</Link>.</p>
+        {liMessages.length > 0 && (
+          <ul className="divide-y divide-slate-100">
+            {liMessages.map((l) => (
+              <li key={l.id} className="py-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-slate-400">{fmtDateTime(l.createdAt)}</span>
+                  <span className="font-medium">{l.name ?? "?"}</span>
+                  <span className="text-xs text-slate-500">{l.campaign}</span>
+                  {l.contact ? (
+                    <Link href={`/kontakte/${l.contact.id}`} className="ml-auto text-xs text-sky-700 hover:underline">→ Kontakt</Link>
+                  ) : (
+                    <form action={convertInboundLead} className="ml-auto">
+                      <input type="hidden" name="id" value={l.id} />
+                      <button className="btn-ghost px-2 py-0.5 text-xs">Als Lead übernehmen</button>
+                    </form>
+                  )}
+                </div>
+                {l.answers && <p className="mt-1 line-clamp-2 text-xs text-slate-500">{l.answers}</p>}
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 

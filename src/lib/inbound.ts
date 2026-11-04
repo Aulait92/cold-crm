@@ -4,6 +4,8 @@
 import { prisma } from "@/lib/prisma";
 import { Matcher, flatten, norm } from "@/lib/linkedin";
 import type { Prisma } from "@/generated/prisma/client";
+import { SOURCE_LABEL } from "@/lib/crm";
+import { normalizeLinkedInUrl } from "@/lib/linkedin";
 
 const K = {
   email: ["email", "emailadresse", "mail", "eMail", "workemail", "businessemail"],
@@ -19,6 +21,8 @@ const K = {
   ad: ["adname", "ad", "anzeige", "utmcontent"],
   form: ["formname", "form", "formular", "leadformname"],
   platform: ["platform", "utmsource", "source", "quelle"],
+  linkedin: ["linkedinurl", "linkedin", "linkedinprofil", "profileurl", "profilurl"],
+  message: ["message", "nachricht", "text", "comment", "kommentar"],
 };
 const TECH = new Set(
   ["id", "leadid", "leadgenid", "formid", "adid", "adsetid", "campaignid", "pageid", "createdtime", "createdat", "timestamp", "isorganic", "token", "partnername", "retailerid", "vehicle", "inboxurl"].map(norm),
@@ -66,6 +70,8 @@ export type ParsedLead = {
   form: string | null;
   platform: string | null;
   answers: string | null;
+  linkedinUrl: string | null;
+  message: string | null;
 };
 
 export function parseLead(raw: unknown): ParsedLead {
@@ -102,25 +108,31 @@ export function parseLead(raw: unknown): ParsedLead {
     form: pick(flat, K.form),
     platform: pick(flat, K.platform),
     answers: answers || null,
+    linkedinUrl: (() => {
+      const u = pick(flat, K.linkedin);
+      return u && /linkedin\.com\/in\//i.test(u) ? u : null;
+    })(),
+    message: pick(flat, K.message),
   };
 }
 
-const SOURCE_TEXT: Record<string, string> = { META_ADS: "Meta Ads", INBOUND: "Website / Inbound" };
+const SOURCE_TEXT: Record<string, string> = SOURCE_LABEL;
 
-export async function handleInboundLead(raw: unknown, source = "META_ADS") {
+export async function handleInboundLead(raw: unknown, source = "META_ADS", opts: { taskTitle?: string; activity?: string } = {}) {
   const l = parseLead(raw);
-  if (!l.email && !l.phone && !l.lastName) return { ignored: "keine Kontaktdaten erkannt" };
+  if (!l.email && !l.phone && !l.lastName && !l.firstName && !l.linkedinUrl) return { ignored: "keine Kontaktdaten erkannt" };
   const label = SOURCE_TEXT[source] ?? source;
   const matcher = await Matcher.load();
   const m =
-    matcher.match({ url: null, slug: null, firstName: null, lastName: null, email: l.email, company: null, location: null, status: null, connectedAt: null, messageAt: null, repliedAt: null, list: null, tags: null }) ??
+    matcher.match({ url: l.linkedinUrl, slug: normalizeLinkedInUrl(l.linkedinUrl), firstName: null, lastName: null, email: l.email, company: null, location: null, status: null, connectedAt: null, messageAt: null, repliedAt: null, list: null, tags: null }) ??
     matcher.match({ url: null, slug: null, firstName: l.firstName, lastName: l.lastName, email: null, company: null, location: l.city, status: null, connectedAt: null, messageAt: null, repliedAt: null, list: null, tags: null });
 
   let contactId = m?.id ?? null;
   let created = false;
   if (!contactId) {
     const fullName = [l.firstName, l.lastName].filter(Boolean).join(" ");
-    const email = l.email ?? `lead-${Date.now()}@ohne-email.invalid`;
+    const slug = normalizeLinkedInUrl(l.linkedinUrl);
+    const email = l.email ?? (slug ? `linkedin-${slug}@ohne-email.invalid` : `lead-${Date.now()}@ohne-email.invalid`);
     const existing = l.email ? await prisma.contact.findUnique({ where: { email }, select: { id: true } }) : null;
     if (existing) contactId = existing.id;
     else {
@@ -131,6 +143,7 @@ export async function handleInboundLead(raw: unknown, source = "META_ADS") {
           firstName: l.firstName,
           lastName: l.lastName,
           phone: l.phone,
+          linkedinUrl: l.linkedinUrl,
           city: l.city,
           zip: l.zip,
           stage: "INTERESSE",
@@ -150,6 +163,7 @@ export async function handleInboundLead(raw: unknown, source = "META_ADS") {
       where: { id: contactId },
       data: {
         phone: c.phone ?? l.phone ?? undefined,
+        linkedinUrl: l.linkedinUrl ?? undefined,
         // Kontakt hat sich selbst gemeldet → mindestens "Interesse"
         stage: ["NEU", "NICHT_ERREICHT", "WIEDERVORLAGE", "SPAETER", "VERLOREN", "UNGUELTIG"].includes(c.stage) ? "INTERESSE" : undefined,
         lossReason: ["VERLOREN", "UNGUELTIG"].includes(c.stage) ? null : undefined,
@@ -167,6 +181,8 @@ export async function handleInboundLead(raw: unknown, source = "META_ADS") {
     [l.firstName, l.lastName].filter(Boolean).length && `Name: ${[l.firstName, l.lastName].filter(Boolean).join(" ")}`,
     l.email && `E-Mail: ${l.email}`,
     l.phone && `Telefon: ${l.phone}`,
+    l.linkedinUrl && `LinkedIn: ${l.linkedinUrl}`,
+    l.message && `Nachricht:\n${l.message}`,
     l.answers,
   ].filter(Boolean).join("\n");
 
@@ -180,16 +196,21 @@ export async function handleInboundLead(raw: unknown, source = "META_ADS") {
       campaign: l.campaign,
       ad: l.ad,
       form: l.form,
-      answers: l.answers,
+      answers: [l.message, l.answers].filter(Boolean).join("\n") || null,
       created,
       payload: (raw ?? {}) as Prisma.InputJsonValue,
     },
   });
   await prisma.activity.create({
-    data: { contactId, type: "NOTIZ", outcome: `Lead über ${label} eingetragen${created ? " (neuer Kontakt)" : ""}`, note: info || null },
+    data: {
+      contactId,
+      type: source === "LINKEDIN" ? "LINKEDIN" : "NOTIZ",
+      outcome: `${opts.activity ?? `Lead über ${label} eingetragen`}${created ? " (neuer Kontakt)" : ""}`,
+      note: info || null,
+    },
   });
   await prisma.task.create({
-    data: { contactId, title: `Neuen ${label}-Lead anrufen`, type: "ANRUF", dueAt: new Date(), note: info.slice(0, 500) || null },
+    data: { contactId, title: opts.taskTitle ?? `Neuen ${label}-Lead anrufen`, type: "ANRUF", dueAt: new Date(), note: info.slice(0, 500) || null },
   });
-  return { ok: true, created, matched: m?.via ?? null };
+  return { ok: true, created, matched: m?.via ?? null, contactId };
 }

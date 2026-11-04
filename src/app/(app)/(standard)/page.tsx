@@ -1,7 +1,7 @@
 import { connection } from "next/server";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { STAGES, shortName } from "@/lib/crm";
+import { SOURCE_LABEL, STAGES, shortName } from "@/lib/crm";
 import { addDays, fmtDateTime } from "@/lib/dates";
 import { Stat, TaskRow } from "@/components/ui";
 import { dayBounds, openTasks } from "@/lib/queries";
@@ -25,7 +25,7 @@ export default async function HeutePage() {
       include: { contact: { select: { id: true, name: true, city: true } } },
     }),
     prisma.inboundLead.findMany({
-      where: { createdAt: { gte: addDays(start, -7) } },
+      where: { createdAt: { gte: addDays(start, -7) }, contactId: { not: null } },
       orderBy: { createdAt: "desc" },
       take: 8,
       include: { contact: { select: { id: true, name: true, city: true } } },
@@ -36,7 +36,10 @@ export default async function HeutePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold">Heute</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl font-semibold">Heute</h1>
+        <Link href="/kontakte/neu" className="btn-primary">+ Neuer Lead</Link>
+      </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Aufgaben fällig heute" value={tasks.length - overdue} href="/aufgaben" tone="amber" />
         <Stat label="Überfällig" value={overdue} href="/aufgaben" tone={overdue ? "red" : undefined} />
@@ -87,7 +90,7 @@ export default async function HeutePage() {
                   <Link href={l.contact ? `/kontakte/${l.contact.id}` : "/import"} className="block rounded-lg px-2 py-1 hover:bg-slate-50">
                     <span className="font-medium">{l.contact ? shortName(l.contact.name) : l.name ?? l.email}</span>
                     <span className="block text-xs text-slate-500">
-                      {fmtDateTime(l.createdAt)} · {l.source === "META_ADS" ? "Meta Ads" : "Website"}{l.campaign ? ` · ${l.campaign}` : ""}
+                      {fmtDateTime(l.createdAt)} · {SOURCE_LABEL[l.source] ?? l.source}{l.campaign ? ` · ${l.campaign}` : ""}
                     </span>
                   </Link>
                 </li>

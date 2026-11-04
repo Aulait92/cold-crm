@@ -18,6 +18,8 @@ Einfaches CRM für die Cold-Akquise der Allianz-Agenturen: Anruf-Pipeline, Aufga
 
 - **Meta Ads / Inbound-Leads**: Webhook `/api/leads/webhook?token=…` (Meta Lead Ads über Zapier/Make, Landingpage-Formulare, `&source=INBOUND` für Website). Lead → Kontakt (zugeordnet oder neu), Stufe „Interesse“, Kanal „Meta Ads“, Aufgabe „Lead anrufen“.
 
+- **LinkedIn-Nachrichten**: `/api/linkedin/message?token=…` (LinkedIn-Benachrichtigungsmail → Zapier/Gmail → Webhook). Erkennt Absender, Profil und Interesse; bei Interesse Lead + Aufgabe, sonst Protokoll mit „Als Lead übernehmen“. Manuell: „+ Neuer Lead“.
+
 ## Lokal starten
 
 ```bash

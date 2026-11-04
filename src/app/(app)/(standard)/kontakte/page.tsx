@@ -76,7 +76,10 @@ export default async function KontaktePage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Kontakte <span className="text-base font-normal text-slate-500">({total.toLocaleString("de-DE")})</span></h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl font-semibold">Kontakte <span className="text-base font-normal text-slate-500">({total.toLocaleString("de-DE")})</span></h1>
+        <Link href="/kontakte/neu" className="btn-primary">+ Neuer Lead</Link>
+      </div>
 
       <form className="card grid gap-3 p-4 md:grid-cols-[2fr_1fr_1fr_1fr_110px_auto] md:items-end">
         <div>
