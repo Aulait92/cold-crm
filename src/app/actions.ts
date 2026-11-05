@@ -13,7 +13,7 @@ import { ensureSource } from "@/lib/source";
 import { connectCalendly, syncCalendly } from "@/lib/calendly";
 import { handleInboundLead } from "@/lib/inbound";
 import { LI_LABEL, importWaalaxyCsv } from "@/lib/linkedin";
-import { ensureReplyTask, importInstantlyCsv, recordReply, syncInstantly } from "@/lib/instantly";
+import { ensureReplyTask, importInstantlyCsv, recordReply, removeReplyTaskIfNoPositive, syncInstantly } from "@/lib/instantly";
 
 const s = (fd: FormData, k: string) => {
   const v = fd.get(k);
@@ -343,10 +343,14 @@ export async function dragCustomer(contactId: string, customerStage: string) {
 export async function setReplySentiment(fd: FormData) {
   await requireAuth();
   const id = s(fd, "id")!;
-  const sentiment = s(fd, "sentiment");
-  if (!sentiment || !["POSITIV", "NEGATIV", "NEUTRAL"].includes(sentiment)) return;
-  const e = await prisma.emailMessage.update({ where: { id }, data: { sentiment } });
-  if (sentiment === "POSITIV") await ensureReplyTask(e.contactId, (e.text ?? e.subject ?? "").slice(0, 300));
+  const choice = s(fd, "sentiment");
+  if (!choice || !["POSITIV", "NEGATIV", "NEUTRAL", "AUTO"].includes(choice)) return;
+  const e = await prisma.emailMessage.update({
+    where: { id },
+    data: choice === "AUTO" ? { isAutoReply: true, sentiment: "NEUTRAL" } : { isAutoReply: false, sentiment: choice },
+  });
+  if (choice === "POSITIV") await ensureReplyTask(e.contactId, (e.text ?? e.subject ?? "").slice(0, 300));
+  else await removeReplyTaskIfNoPositive(e.contactId);
   refresh(e.contactId);
 }
 

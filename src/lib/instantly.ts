@@ -1,7 +1,7 @@
 import Papa from "papaparse";
 import { prisma } from "@/lib/prisma";
 import { CAMPAIGN_STATUS } from "@/lib/crm";
-import { classifyReply, sentimentFromInstantly, type Sentiment } from "@/lib/sentiment";
+import { classifyReply, isAutoReplyText, sentimentFromInstantly, type Sentiment } from "@/lib/sentiment";
 
 const API = "https://api.instantly.ai/api/v2";
 
@@ -203,6 +203,9 @@ export async function recordReply(contactId: string, r: Reply): Promise<boolean>
     });
     return false;
   }
+  // Eingangsbestätigungen/Abwesenheitsnotizen auch erkennen, wenn Instantly sie nicht markiert
+  const instantlyPositive = sentimentFromInstantly(r.interest) === "POSITIV";
+  r.isAutoReply = r.isAutoReply || (!instantlyPositive && isAutoReplyText(r.subject, stripQuoted(r.text ?? "")));
   const sentiment: Sentiment = r.isAutoReply ? "NEUTRAL" : sentimentFromInstantly(r.interest) ?? classifyReply(stripQuoted(r.text ?? ""), r.subject?.replace(/^(re|aw|antw|fwd?|wg):\s*/i, ""));
   await prisma.emailMessage.create({
     data: {
@@ -423,4 +426,31 @@ export async function handleWebhook(p: Record<string, unknown>) {
       return { ignored: type };
   }
   return { ok: true };
+}
+
+/**
+ * Bereits gespeicherte Antworten nachträglich prüfen: als Auto-Reply erkannte
+ * werden umgestellt und die dazu fälschlich angelegte offene Aufgabe entfernt.
+ */
+export async function cleanupAutoReplies() {
+  const emails = await prisma.emailMessage.findMany({ where: { direction: "IN", isAutoReply: false } });
+  let fixed = 0;
+  for (const e of emails) {
+    if (!isAutoReplyText(e.subject, stripQuoted(e.text ?? ""))) continue;
+    await prisma.emailMessage.update({ where: { id: e.id }, data: { isAutoReply: true, sentiment: "NEUTRAL" } });
+    await removeReplyTaskIfNoPositive(e.contactId);
+    await prisma.activity.updateMany({
+      where: { contactId: e.contactId, type: "COLD_MAIL", outcome: { startsWith: "Antwort erhalten" }, occurredAt: e.sentAt },
+      data: { outcome: "Automatische Antwort" },
+    });
+    fixed++;
+  }
+  return fixed;
+}
+
+/** Entfernt die offene Antwort-Aufgabe, wenn der Kontakt keine positive Antwort mehr hat. */
+export async function removeReplyTaskIfNoPositive(contactId: string) {
+  const positive = await prisma.emailMessage.count({ where: { contactId, direction: "IN", sentiment: "POSITIV", isAutoReply: false } });
+  if (positive) return;
+  await prisma.task.deleteMany({ where: { contactId, doneAt: null, title: "Auf Cold-Mail-Antwort reagieren" } });
 }

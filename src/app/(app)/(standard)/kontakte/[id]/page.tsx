@@ -104,18 +104,20 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
                         {e.fromEmail}{e.campaign ? ` · Kampagne: ${e.campaign}` : ""}
                       </div>
                       <p className="mt-2 whitespace-pre-wrap text-slate-700">{main || "(kein Text)"}</p>
-                      {!e.isAutoReply && (
-                        <div className="mt-2 flex items-center gap-1 text-xs text-slate-400">
-                          Einordnung ändern:
-                          {(["POSITIV", "NEUTRAL", "NEGATIV"] as const).filter((x) => x !== e.sentiment).map((x) => (
+                      <div className="mt-2 flex flex-wrap items-center gap-1 text-xs text-slate-400">
+                        Einordnung ändern:
+                        {(["POSITIV", "NEUTRAL", "NEGATIV", "AUTO"] as const)
+                          .filter((x) => (x === "AUTO" ? !e.isAutoReply : e.isAutoReply || x !== e.sentiment))
+                          .map((x) => (
                             <form key={x} action={setReplySentiment}>
                               <input type="hidden" name="id" value={e.id} />
                               <input type="hidden" name="sentiment" value={x} />
-                              <button className="btn-ghost px-2 py-0.5 text-xs">{x === "POSITIV" ? "👍 positiv" : x === "NEGATIV" ? "👎 negativ" : "neutral"}</button>
+                              <button className="btn-ghost px-2 py-0.5 text-xs">
+                                {x === "POSITIV" ? "👍 positiv" : x === "NEGATIV" ? "👎 negativ" : x === "AUTO" ? "🤖 automatische Antwort" : "neutral"}
+                              </button>
                             </form>
                           ))}
-                        </div>
-                      )}
+                      </div>
                       {quoted && (
                         <details className="mt-1">
                           <summary className="cursor-pointer text-xs text-slate-400">Zitierten Verlauf anzeigen</summary>
